@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const stats = [
   { label: "Open jobs", value: "0" },
   { label: "Candidates", value: "0" },
@@ -19,9 +21,12 @@ export default function Home() {
             </p>
           </div>
 
-          <button className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700">
-            Create job
-          </button>
+          <Link
+  href="/jobs/new"
+  className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700"
+>
+  Create job
+</Link>
         </div>
       </header>
 
