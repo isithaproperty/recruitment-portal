@@ -1,6 +1,54 @@
+"use client";
+
 import Link from "next/link";
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 export default function NewJobPage() {
+  const router = useRouter();
+  const supabase = createClient();
+  const [message, setMessage] = useState("");
+const [saving, setSaving] = useState(false);
+
+  const [jobTitle, setJobTitle] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [location, setLocation] = useState("");
+  const [minExperience, setMinExperience] = useState(0);
+  const [jobDescription, setJobDescription] = useState("");
+  const [mandatoryRequirements, setMandatoryRequirements] = useState("");
+  const [preferredRequirements, setPreferredRequirements] = useState("");
+  const [closingDate, setClosingDate] = useState("");
+
+ async function handleSaveJob(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+  setSaving(true);
+  setMessage("");
+
+  const { error } = await supabase.from("jobs").insert({
+    title: jobTitle,
+    client_company: clientName,
+    location,
+    minimum_experience: minExperience ? Number(minExperience) : null,
+    job_description: jobDescription,
+    mandatory_requirements: mandatoryRequirements,
+    preferred_requirements: preferredRequirements,
+    closing_date: closingDate || null,
+    status: "open",
+  });
+
+  if (error) {
+    setMessage(error.message);
+    setSaving(false);
+    return;
+  }
+
+  router.push("/");
+  router.refresh();
+}
+      
+  
+
   return (
     <main className="min-h-screen bg-slate-100">
       <header className="border-b border-slate-200 bg-white">
@@ -24,7 +72,10 @@ export default function NewJobPage() {
       </header>
 
       <div className="mx-auto max-w-5xl px-6 py-8">
-        <form className="space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+        <form
+  onSubmit={handleSaveJob}
+  className="space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm"
+>
           <div className="grid gap-6 md:grid-cols-2">
             <div>
               <label className="mb-2 block text-sm font-semibold text-slate-700">
@@ -122,13 +173,19 @@ export default function NewJobPage() {
             >
               Cancel
             </Link>
+            {message && (
+  <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+    {message}
+  </p>
+)}
 
-            <button
-              type="submit"
-              className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-700"
-            >
-              Save job
-            </button>
+           <button
+  type="submit"
+  disabled={saving}
+  className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-60"
+>
+  {saving ? "Saving..." : "Save job"}
+</button>
           </div>
         </form>
       </div>
