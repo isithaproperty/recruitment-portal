@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 type ScoreRequest = {
+  applicationId?: string;
   job?: {
     title?: string | null;
     location?: string | null;
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
     if (!userResponse.ok) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
 
     const body = (await request.json()) as ScoreRequest;
-    if (!body.cvUrl || !body.job?.title) return NextResponse.json({ error: "The candidate CV or job details are missing." }, { status: 400 });
+    if (!body.applicationId || !body.cvUrl || !body.job?.title) return NextResponse.json({ error: "The candidate CV or job details are missing." }, { status: 400 });
 
     const cvResponse = await fetch(body.cvUrl, { cache: "no-store" });
     if (!cvResponse.ok) return NextResponse.json({ error: "The CV could not be opened for scoring." }, { status: 400 });
@@ -107,12 +108,34 @@ export async function POST(request: Request) {
       const score = Math.max(0, Math.min(100, Math.round(Number(result.match_score))));
       if (!Number.isFinite(score) || !result.strengths || !result.weaknesses) throw new Error("Invalid AI score response");
 
+      const scoredAt = new Date().toISOString();
+      const saveResponse = await fetch(`${supabaseUrl}/rest/v1/candidate_applications?id=eq.${encodeURIComponent(body.applicationId)}`, {
+        method: "PATCH",
+        headers: {
+          apikey: publishableKey,
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          match_score: score,
+          strengths: result.strengths,
+          weaknesses: result.weaknesses,
+          ai_rationale: result.rationale || null,
+          ai_model: "gpt-5.6-luna",
+          ai_scored_at: scoredAt,
+        }),
+        cache: "no-store",
+      });
+      if (!saveResponse.ok) return NextResponse.json({ error: "The AI score was created but could not be saved. Please try again." }, { status: 502 });
+
       return NextResponse.json({
         match_score: score,
         strengths: result.strengths,
         weaknesses: result.weaknesses,
         rationale: result.rationale || "",
         model: "gpt-5.6-luna",
+        scored_at: scoredAt,
       });
     } finally {
       if (uploaded.id) {
