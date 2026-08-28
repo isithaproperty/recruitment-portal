@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function NewJobPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(()=>createClient(),[]);
+  const [authorised,setAuthorised]=useState(false);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [jobTitle, setJobTitle] = useState("");
@@ -19,8 +20,12 @@ export default function NewJobPage() {
   const [preferredRequirements, setPreferredRequirements] = useState("");
   const [closingDate, setClosingDate] = useState("");
 
+  useEffect(()=>{void checkAccess()},[]);
+  async function checkAccess(){const{data:{user},error}=await supabase.auth.getUser();if(error||!user){router.replace("/login");return}setAuthorised(true)}
+
   async function handleSaveJob(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if(!authorised)return;
     setSaving(true);
     setMessage("");
     const publicSlug = crypto.randomUUID().replaceAll("-", "").slice(0, 16);
@@ -46,6 +51,7 @@ export default function NewJobPage() {
     router.refresh();
   }
 
+  if(!authorised)return <main className="min-h-screen bg-slate-100 p-8 text-slate-900">Checking recruiter access...</main>;
   const input = "w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-slate-600";
 
   return <main className="min-h-screen bg-slate-100">
