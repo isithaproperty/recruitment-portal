@@ -2,76 +2,20 @@ import { NextResponse } from "next/server";
 
 type RequestBody={cvUrl?:string;fileName?:string;candidateName?:string;jobTitle?:string|null};
 
-function outputText(payload:unknown){
-  if(!payload||typeof payload!=="object")return "";
-  const output=(payload as {output?:unknown[]}).output;
-  if(!Array.isArray(output))return "";
-  for(const item of output){
-    if(!item||typeof item!=="object")continue;
-    const content=(item as {content?:unknown[]}).content;
-    if(!Array.isArray(content))continue;
-    for(const part of content){
-      if(!part||typeof part!=="object")continue;
-      const typed=part as {type?:string;text?:string};
-      if(typed.type==="output_text"&&typeof typed.text==="string")return typed.text;
-    }
-  }
-  return "";
-}
+function outputText(payload:unknown){if(!payload||typeof payload!=="object")return "";const output=(payload as {output?:unknown[]}).output;if(!Array.isArray(output))return "";for(const item of output){if(!item||typeof item!=="object")continue;const content=(item as {content?:unknown[]}).content;if(!Array.isArray(content))continue;for(const part of content){if(!part||typeof part!=="object")continue;const typed=part as {type?:string;text?:string};if(typed.type==="output_text"&&typeof typed.text==="string")return typed.text}}return "";}
+function trustedCvUrl(value:string,supabaseUrl:string){try{const candidate=new URL(value);const project=new URL(supabaseUrl);return candidate.protocol==="https:"&&candidate.origin===project.origin&&candidate.pathname.startsWith("/storage/v1/object/sign/candidate-cvs/");}catch{return false}}
 
 export async function POST(request:Request){
   try{
-    const authHeader=request.headers.get("authorization")||"";
-    const accessToken=authHeader.startsWith("Bearer ")?authHeader.slice(7):"";
-    if(!accessToken)return NextResponse.json({error:"Please sign in again."},{status:401});
-
-    const supabaseUrl=process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-    const openAiKey=process.env.OPENAI_API_KEY;
-    if(!supabaseUrl||!publishableKey)return NextResponse.json({error:"Recruitment database configuration is incomplete."},{status:500});
-    if(!openAiKey)return NextResponse.json({error:"CV reformatting is not configured yet. Add the OPENAI_API_KEY environment variable in Vercel."},{status:503});
-
-    const userResponse=await fetch(`${supabaseUrl}/auth/v1/user`,{headers:{apikey:publishableKey,Authorization:`Bearer ${accessToken}`},cache:"no-store"});
-    if(!userResponse.ok)return NextResponse.json({error:"Please sign in again."},{status:401});
-
-    const body=(await request.json()) as RequestBody;
-    if(!body.cvUrl||!body.candidateName)return NextResponse.json({error:"The candidate CV is missing."},{status:400});
-
-    const cvResponse=await fetch(body.cvUrl,{cache:"no-store"});
-    if(!cvResponse.ok)return NextResponse.json({error:"The original CV could not be opened."},{status:400});
-    const cvBlob=await cvResponse.blob();
-    if(cvBlob.size>10*1024*1024)return NextResponse.json({error:"The CV is larger than 10 MB."},{status:400});
-
-    const form=new FormData();
-    form.append("purpose","user_data");
-    form.append("file",new File([cvBlob],body.fileName||"candidate-cv",{type:cvBlob.type||"application/octet-stream"}));
-    const upload=await fetch("https://api.openai.com/v1/files",{method:"POST",headers:{Authorization:`Bearer ${openAiKey}`},body:form});
-    if(!upload.ok)return NextResponse.json({error:"The CV could not be prepared for reformatting."},{status:502});
-    const uploaded=(await upload.json()) as {id:string};
-
+    const authHeader=request.headers.get("authorization")||"";const accessToken=authHeader.startsWith("Bearer ")?authHeader.slice(7):"";if(!accessToken)return NextResponse.json({error:"Please sign in again."},{status:401});
+    const supabaseUrl=process.env.NEXT_PUBLIC_SUPABASE_URL;const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;const openAiKey=process.env.OPENAI_API_KEY;if(!supabaseUrl||!publishableKey)return NextResponse.json({error:"Recruitment database configuration is incomplete."},{status:500});if(!openAiKey)return NextResponse.json({error:"CV reformatting is not configured yet. Add the OPENAI_API_KEY environment variable in Vercel."},{status:503});
+    const userResponse=await fetch(`${supabaseUrl}/auth/v1/user`,{headers:{apikey:publishableKey,Authorization:`Bearer ${accessToken}`},cache:"no-store"});if(!userResponse.ok)return NextResponse.json({error:"Please sign in again."},{status:401});
+    const body=(await request.json()) as RequestBody;if(!body.cvUrl||!body.candidateName)return NextResponse.json({error:"The candidate CV is missing."},{status:400});
+    if(!trustedCvUrl(body.cvUrl,supabaseUrl))return NextResponse.json({error:"The CV source is not permitted."},{status:400});
+    const cvResponse=await fetch(body.cvUrl,{cache:"no-store"});if(!cvResponse.ok)return NextResponse.json({error:"The original CV could not be opened."},{status:400});const cvBlob=await cvResponse.blob();if(cvBlob.size>10*1024*1024)return NextResponse.json({error:"The CV is larger than 10 MB."},{status:400});
+    const form=new FormData();form.append("purpose","user_data");form.append("file",new File([cvBlob],body.fileName||"candidate-cv",{type:cvBlob.type||"application/octet-stream"}));const upload=await fetch("https://api.openai.com/v1/files",{method:"POST",headers:{Authorization:`Bearer ${openAiKey}`},body:form});if(!upload.ok)return NextResponse.json({error:"The CV could not be prepared for reformatting."},{status:502});const uploaded=(await upload.json()) as {id:string};
     try{
-      const response=await fetch("https://api.openai.com/v1/responses",{
-        method:"POST",
-        headers:{Authorization:`Bearer ${openAiKey}`,"Content-Type":"application/json"},
-        body:JSON.stringify({
-          model:"gpt-5.6-luna",
-          reasoning:{effort:"low"},
-          input:[
-            {role:"system",content:[{type:"input_text",text:"You reformat CVs for Isitha Recruitment after a human recruiter has approved the candidate for client submission. Preserve the candidate name and all job-relevant employment history, qualifications, skills, achievements and project experience. Remove all personal contact data including email addresses, phone numbers, street/home addresses, ID/passport numbers, dates of birth, marital/family details, photographs and social-media handles unless a recruiter would need a professional portfolio link. Do not invent facts or improve qualifications. Rewrite only for clarity, consistency and professional presentation. Return valid JSON only with exactly these string keys: recruiter_summary, professional_profile, skills, qualifications, experience, projects, additional_information. Use concise plain text suitable for an Isitha-branded client CV."}]},
-            {role:"user",content:[{type:"input_text",text:`Candidate: ${body.candidateName}\nTarget role: ${body.jobTitle||"Not specified"}`},{type:"input_file",file_id:uploaded.id}]}
-          ]
-        })
-      });
-      if(!response.ok)return NextResponse.json({error:"The CV could not be reformatted right now."},{status:502});
-      const payload=await response.json();
-      const text=outputText(payload).trim().replace(/^```json\s*/i,"").replace(/```$/i,"").trim();
-      const result=JSON.parse(text) as Record<string,string>;
-      return NextResponse.json(result);
-    }finally{
-      await fetch(`https://api.openai.com/v1/files/${encodeURIComponent(uploaded.id)}`,{method:"DELETE",headers:{Authorization:`Bearer ${openAiKey}`}}).catch(()=>undefined);
-    }
-  }catch(error){
-    if(process.env.NODE_ENV!=="production")console.error(error);
-    return NextResponse.json({error:"The CV could not be reformatted. Please try again."},{status:500});
-  }
+      const response=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{Authorization:`Bearer ${openAiKey}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-5.6-luna",reasoning:{effort:"low"},input:[{role:"system",content:[{type:"input_text",text:"You reformat CVs for Isitha Recruitment after a human recruiter has approved the candidate for client submission. Preserve the candidate name and all job-relevant employment history, qualifications, skills, achievements and project experience. Remove all personal contact data including email addresses, phone numbers, street/home addresses, ID/passport numbers, dates of birth, marital/family details, photographs and social-media handles unless a recruiter would need a professional portfolio link. Do not invent facts or improve qualifications. Rewrite only for clarity, consistency and professional presentation. Return valid JSON only with exactly these string keys: recruiter_summary, professional_profile, skills, qualifications, experience, projects, additional_information. Use concise plain text suitable for an Isitha-branded client CV."}]},{role:"user",content:[{type:"input_text",text:`Candidate: ${body.candidateName}\nTarget role: ${body.jobTitle||"Not specified"}`},{type:"input_file",file_id:uploaded.id}]}]})});if(!response.ok)return NextResponse.json({error:"The CV could not be reformatted right now."},{status:502});const payload=await response.json();const text=outputText(payload).trim().replace(/^```json\s*/i,"").replace(/```$/i,"").trim();const result=JSON.parse(text) as Record<string,string>;return NextResponse.json(result);
+    }finally{await fetch(`https://api.openai.com/v1/files/${encodeURIComponent(uploaded.id)}`,{method:"DELETE",headers:{Authorization:`Bearer ${openAiKey}`}}).catch(()=>undefined)}
+  }catch(error){if(process.env.NODE_ENV!=="production")console.error(error);return NextResponse.json({error:"The CV could not be reformatted. Please try again."},{status:500})}
 }
