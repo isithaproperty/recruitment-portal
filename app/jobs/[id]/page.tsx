@@ -11,7 +11,7 @@ type Application={id:string;candidate_name:string;email:string;location:string|n
 export default function JobPage(){
   const params=useParams<{id:string}>();
   const supabase=useMemo(()=>createClient(),[]);
-  const[job,setJob]=useState<Job|null>(null);const[apps,setApps]=useState<Application[]>([]);const[loading,setLoading]=useState(true);const[scoring,setScoring]=useState<string|null>(null);const[message,setMessage]=useState("");
+  const[job,setJob]=useState<Job|null>(null);const[apps,setApps]=useState<Application[]>([]);const[loading,setLoading]=useState(true);const[scoring,setScoring]=useState<string|null>(null);const[moving,setMoving]=useState<string|null>(null);const[message,setMessage]=useState("");
   useEffect(()=>{void load()},[params.id]);
   async function load(){
     setLoading(true);
@@ -41,10 +41,14 @@ export default function JobPage(){
     }catch(error){setMessage(error instanceof Error?error.message:"The candidate could not be scored.");}finally{setScoring(null)}
   }
 
-  async function scoreAll(){
-    for(const application of apps){
-      if(application.match_score==null)await scoreCandidate(application);
-    }
+  async function scoreAll(){for(const application of apps){if(application.match_score==null)await scoreCandidate(application)}}
+
+  async function moveForward(application:Application){
+    if(moving)return;setMoving(application.id);setMessage("");
+    const{error}=await supabase.from("candidate_applications").update({status:"client_cv"}).eq("id",application.id);
+    if(error)setMessage("The candidate could not be moved to the Client CV Builder.");
+    else{setMessage(`${application.candidate_name} has been moved to the Client CV Builder.`);await load()}
+    setMoving(null);
   }
 
   if(loading)return <main className="min-h-screen bg-slate-100 p-8">Loading...</main>;
@@ -52,10 +56,10 @@ export default function JobPage(){
   const applyPath=job.public_slug?`/apply/${job.public_slug}`:"";
   const unscored=apps.filter(a=>a.match_score==null).length;
   return <main className="min-h-screen bg-slate-100"><div className="mx-auto max-w-6xl px-6 py-8">
-    <Link href="/">← Dashboard</Link><div className="mt-5 rounded-xl bg-white p-7 shadow-sm"><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase">{job.status}</span><h1 className="mt-3 text-3xl font-bold">{job.title}</h1><p className="mt-2 text-slate-600">{job.client_company} · {job.location}</p>
+    <div className="flex items-center justify-between"><Link href="/">← Dashboard</Link><Link href="/client-cvs" className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold">Client CV Builder</Link></div><div className="mt-5 rounded-xl bg-white p-7 shadow-sm"><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase">{job.status}</span><h1 className="mt-3 text-3xl font-bold">{job.title}</h1><p className="mt-2 text-slate-600">{job.client_company} · {job.location}</p>
     {applyPath&&<div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="text-sm font-semibold">Public application link</p><div className="mt-2 flex flex-wrap gap-2"><code className="rounded bg-white px-3 py-2 text-sm">{applyPath}</code><button className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white" onClick={()=>navigator.clipboard.writeText(`${window.location.origin}${applyPath}`)}>Copy link</button><Link className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold" href={applyPath} target="_blank">Open</Link></div></div>}</div>
     {message&&<div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{message}</div>}
-    <section className="mt-6 rounded-xl bg-white p-7 shadow-sm"><div className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-2xl font-bold">AI candidate shortlist</h2><p className="text-sm text-slate-500">AI provides job-related decision support only. A recruiter must review every recommendation before shortlisting.</p></div><div className="flex items-center gap-3"><span className="text-sm font-semibold">{apps.length} applications</span>{unscored>0&&<button disabled={Boolean(scoring)} onClick={()=>void scoreAll()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{scoring?"Scoring...":`Score ${unscored} unscored`}</button>}</div></div>
-    <div className="mt-5 space-y-4">{apps.length===0?<p className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center text-slate-500">No applications yet.</p>:apps.map(a=><article key={a.id} className="rounded-lg border border-slate-200 p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold">{a.candidate_name}</h3><p className="text-sm text-slate-500">{a.location||"Location not supplied"}</p></div><div className="text-right"><strong className="text-xl">{a.match_score==null?"Awaiting score":`${a.match_score}%`}</strong><div className="mt-2"><button disabled={Boolean(scoring)} onClick={()=>void scoreCandidate(a)} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-semibold disabled:opacity-50">{scoring===a.id?"Scoring...":a.match_score==null?"AI score":"Re-score"}</button></div></div></div>{a.strengths&&<p className="mt-3 text-sm"><b>Strengths:</b> {a.strengths}</p>}{a.weaknesses&&<p className="mt-2 text-sm"><b>Weaknesses:</b> {a.weaknesses}</p>}{a.ai_rationale&&<p className="mt-2 text-sm text-slate-600"><b>AI comments:</b> {a.ai_rationale}</p>}{a.ai_scored_at&&<p className="mt-2 text-xs text-slate-400">AI reviewed {new Date(a.ai_scored_at).toLocaleString()}</p>}</article>)}</div></section>
+    <section className="mt-6 rounded-xl bg-white p-7 shadow-sm"><div className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-2xl font-bold">AI candidate shortlist</h2><p className="text-sm text-slate-500">AI provides job-related decision support only. Your team reviews the full candidate details here before moving anyone forward.</p></div><div className="flex items-center gap-3"><span className="text-sm font-semibold">{apps.length} applications</span>{unscored>0&&<button disabled={Boolean(scoring)} onClick={()=>void scoreAll()} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{scoring?"Scoring...":`Score ${unscored} unscored`}</button>}</div></div>
+    <div className="mt-5 space-y-4">{apps.length===0?<p className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center text-slate-500">No applications yet.</p>:apps.map(a=><article key={a.id} className="rounded-lg border border-slate-200 p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold">{a.candidate_name}</h3><p className="text-sm text-slate-500">{a.email} · {a.location||"Location not supplied"}</p></div><div className="text-right"><strong className="text-xl">{a.match_score==null?"Awaiting score":`${a.match_score}%`}</strong><div className="mt-2 flex flex-wrap justify-end gap-2"><button disabled={Boolean(scoring)} onClick={()=>void scoreCandidate(a)} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-semibold disabled:opacity-50">{scoring===a.id?"Scoring...":a.match_score==null?"AI score":"Re-score"}</button>{a.status==="client_cv"||a.status==="client_cv_ready"?<Link href="/client-cvs" className="rounded bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">In Client CV Builder</Link>:<button disabled={Boolean(moving)} onClick={()=>void moveForward(a)} className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{moving===a.id?"Moving...":"Move to Client CV"}</button>}</div></div></div>{a.strengths&&<p className="mt-3 text-sm"><b>Strengths:</b> {a.strengths}</p>}{a.weaknesses&&<p className="mt-2 text-sm"><b>Weaknesses:</b> {a.weaknesses}</p>}{a.ai_rationale&&<p className="mt-2 text-sm text-slate-600"><b>AI comments:</b> {a.ai_rationale}</p>}{a.ai_scored_at&&<p className="mt-2 text-xs text-slate-400">AI reviewed {new Date(a.ai_scored_at).toLocaleString()}</p>}</article>)}</div></section>
   </div></main>;
 }
