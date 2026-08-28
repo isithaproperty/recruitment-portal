@@ -31,12 +31,9 @@ export default function JobPage(){
       if(!session?.access_token){window.location.href="/login";return}
       const{data:signed,error:signedError}=await supabase.storage.from("candidate-cvs").createSignedUrl(application.cv_path,300);
       if(signedError||!signed?.signedUrl)throw new Error("CV unavailable");
-      const response=await fetch("/api/score-application",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({job,cvUrl:signed.signedUrl,fileName:application.cv_path.split("/").pop()||"candidate-cv"})});
+      const response=await fetch("/api/score-application",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({applicationId:application.id,job,cvUrl:signed.signedUrl,fileName:application.cv_path.split("/").pop()||"candidate-cv"})});
       const result=await response.json();
       if(!response.ok)throw new Error(result.error||"AI scoring failed");
-      const now=new Date().toISOString();
-      const{error:updateError}=await supabase.from("candidate_applications").update({match_score:result.match_score,strengths:result.strengths,weaknesses:result.weaknesses,ai_rationale:result.rationale||null,ai_model:result.model||null,ai_scored_at:now}).eq("id",application.id);
-      if(updateError)throw updateError;
       await load();
     }catch(error){setMessage(error instanceof Error?error.message:"The candidate could not be scored.");}finally{setScoring(null)}
   }
