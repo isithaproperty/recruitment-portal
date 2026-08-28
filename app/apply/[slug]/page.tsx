@@ -10,7 +10,24 @@ export default function ApplyPage(){
   const params=useParams<{slug:string}>();const supabase=createClient();const[job,setJob]=useState<Job|null>(null);const[loading,setLoading]=useState(true);const[message,setMessage]=useState("");const[saving,setSaving]=useState(false);
   useEffect(()=>{void load()},[params.slug]);
   async function load(){const{data}=await supabase.from("jobs").select("id,title,client_company,location,job_description,closing_date,status").eq("public_slug",params.slug).eq("status","open").maybeSingle();setJob(data as Job|null);setLoading(false)}
-  async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!job||saving)return;setSaving(true);setMessage("");const fd=new FormData(e.currentTarget);const file=fd.get("cv");if(!(file instanceof File)||!file.size){setMessage("Please attach your CV.");setSaving(false);return}const allowed=["application/pdf","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];if(!allowed.includes(file.type)||file.size>10*1024*1024){setMessage("CV must be PDF, DOC or DOCX and 10 MB or smaller.");setSaving(false);return}const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");const path=`${job.id}/${crypto.randomUUID()}-${safe}`;const{error:uploadError}=await supabase.storage.from("candidate-cvs").upload(path,file,{upsert:false});if(uploadError){setMessage("Your CV could not be uploaded. Please try again.");setSaving(false);return}const{error}=await supabase.from("candidate_applications").insert({job_id:job.id,candidate_name:String(fd.get("name")||"").trim(),email:String(fd.get("email")||"").trim().toLowerCase(),phone:String(fd.get("phone")||"").trim()||null,location:String(fd.get("location")||"").trim()||null,cv_path:path,status:"applied"});if(error){await supabase.storage.from("candidate-cvs").remove([path]);setMessage("Your application could not be submitted. Please try again.");setSaving(false);return}e.currentTarget.reset();setMessage("Application submitted successfully. Thank you.");setSaving(false)}
+  async function submit(e:FormEvent<HTMLFormElement>){
+    e.preventDefault();if(!job||saving)return;
+    const form=e.currentTarget;
+    setSaving(true);setMessage("");
+    try{
+      const fd=new FormData(form);const file=fd.get("cv");
+      if(!(file instanceof File)||!file.size){setMessage("Please attach your CV.");return}
+      const allowed=["application/pdf","application/msword","application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+      if(!allowed.includes(file.type)||file.size>10*1024*1024){setMessage("CV must be PDF, DOC or DOCX and 10 MB or smaller.");return}
+      const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,"_");const path=`${job.id}/${crypto.randomUUID()}-${safe}`;
+      const{error:uploadError}=await supabase.storage.from("candidate-cvs").upload(path,file,{upsert:false});
+      if(uploadError){setMessage(`Your CV could not be uploaded. ${uploadError.message||"Please try again."}`);return}
+      const{error}=await supabase.from("candidate_applications").insert({job_id:job.id,candidate_name:String(fd.get("name")||"").trim(),email:String(fd.get("email")||"").trim().toLowerCase(),phone:String(fd.get("phone")||"").trim()||null,location:String(fd.get("location")||"").trim()||null,cv_path:path,status:"applied"});
+      if(error){await supabase.storage.from("candidate-cvs").remove([path]);setMessage(`Your application could not be submitted. ${error.message||"Please try again."}`);return}
+      form.reset();setMessage("Application submitted successfully. Thank you.");
+    }catch(error){setMessage(error instanceof Error?error.message:"Your application could not be submitted. Please try again.");}
+    finally{setSaving(false)}
+  }
   if(loading)return <main className="min-h-screen bg-slate-100 p-8">Loading vacancy...</main>;
   if(!job)return <main className="min-h-screen bg-slate-100 p-8"><div className="mx-auto max-w-2xl rounded-xl bg-white p-8">This vacancy is no longer available.</div></main>;
   const input="mt-2 w-full rounded-lg border border-slate-300 px-4 py-3";
