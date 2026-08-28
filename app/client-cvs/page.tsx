@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect,useMemo,useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { ISITHA_LOGO_DATA_URI } from "@/lib/brand";
 
 type QueueItem={id:string;candidate_name:string;cv_path:string;status:string;job_id:string;jobs:{title:string}|null};
 type ClientCv={id?:string;application_id:string;candidate_name:string;recruiter_summary:string;professional_profile:string;skills:string;qualifications:string;experience:string;projects:string;additional_information:string;source_cv_path:string;status:string};
 
-const LETTERHEAD_IMAGE=typeof window!=="undefined"?`${window.location.origin}/isitha-global-logo.png`:"/isitha-global-logo.png";
+const LETTERHEAD_IMAGE=ISITHA_LOGO_DATA_URI;
 const empty=(a:QueueItem):ClientCv=>({application_id:a.id,candidate_name:a.candidate_name,recruiter_summary:"",professional_profile:"",skills:"",qualifications:"",experience:"",projects:"",additional_information:"",source_cv_path:a.cv_path,status:"draft"});
 
 function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]||c));}
