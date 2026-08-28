@@ -2,19 +2,20 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type Job={id:string;title:string;client_company:string|null;location:string|null;job_description:string|null;mandatory_requirements:string|null;preferred_requirements:string|null;public_slug:string|null;status:string};
 type Application={id:string;candidate_name:string;email:string;location:string|null;status:string;match_score:number|null;strengths:string|null;weaknesses:string|null;ai_rationale:string|null;ai_scored_at:string|null;cv_path:string;created_at:string};
 
 export default function JobPage(){
-  const params=useParams<{id:string}>();
+  const params=useParams<{id:string}>();const router=useRouter();
   const supabase=useMemo(()=>createClient(),[]);
   const[job,setJob]=useState<Job|null>(null);const[apps,setApps]=useState<Application[]>([]);const[loading,setLoading]=useState(true);const[scoring,setScoring]=useState<string|null>(null);const[moving,setMoving]=useState<string|null>(null);const[message,setMessage]=useState("");const[origin,setOrigin]=useState("");
   useEffect(()=>{setOrigin(window.location.origin);void load()},[params.id]);
   async function load(){
     setLoading(true);
+    const{data:{user},error:authError}=await supabase.auth.getUser();if(authError||!user){router.replace("/login");return}
     const[{data:j,error:jobError},{data:a,error:appsError}]=await Promise.all([
       supabase.from("jobs").select("id,title,client_company,location,job_description,mandatory_requirements,preferred_requirements,public_slug,status").eq("id",params.id).single(),
       supabase.from("candidate_applications").select("id,candidate_name,email,location,status,match_score,strengths,weaknesses,ai_rationale,ai_scored_at,cv_path,created_at").eq("job_id",params.id).order("match_score",{ascending:false,nullsFirst:false})
@@ -48,7 +49,7 @@ export default function JobPage(){
     setMoving(null);
   }
 
-  if(loading)return <main className="min-h-screen bg-slate-100 p-8">Loading...</main>;
+  if(loading)return <main className="min-h-screen bg-slate-100 p-8">Checking recruiter access...</main>;
   if(!job)return <main className="min-h-screen bg-slate-100 p-8">Job not found.</main>;
   const applyPath=job.public_slug?`/apply/${job.public_slug}`:"";
   const applyUrl=applyPath&&origin?`${origin}${applyPath}`:applyPath;
