@@ -312,13 +312,21 @@ export default function ClientCvPage() {
   }
   function word() {
     if (!cv) return;
-    const blob = new Blob([documentHtml(cv)], { type: "application/msword" });
+    const blob = new Blob(["\ufeff", documentHtml(cv)], {
+      type: "application/msword;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${cv.candidate_name.replace(/[^a-z0-9]+/gi, "-")}-Isitha-Global-CV.doc`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${cv.candidate_name.replace(/[^a-z0-9]+/gi, "-")}-Isitha-Global-CV.doc`;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    setMessage("The reformatted CV download has started.");
+    window.setTimeout(() => {
+      link.remove();
+      URL.revokeObjectURL(url);
+    }, 5000);
   }
   function pdf() {
     if (!cv) return;
@@ -466,7 +474,7 @@ export default function ClientCvPage() {
                       onClick={word}
                       className="rounded border px-4 py-2 text-sm font-semibold"
                     >
-                      Download Word
+                      Download reformatted CV
                     </button>
                     <button
                       onClick={pdf}
