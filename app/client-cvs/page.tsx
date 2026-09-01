@@ -1,31 +1,606 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect,useMemo,useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ISITHA_LOGO_DATA_URI } from "@/lib/brand";
 
-type QueueItem={id:string;candidate_name:string;cv_path:string;status:string;job_id:string;jobs:{title:string}|null};
-type ClientCv={id?:string;application_id:string;candidate_name:string;recruiter_summary:string;professional_profile:string;skills:string;qualifications:string;experience:string;projects:string;additional_information:string;source_cv_path:string;status:string};
+type QueueItem = {
+  id: string;
+  candidate_name: string;
+  cv_path: string;
+  status: string;
+  job_id: string;
+  jobs: { title: string } | null;
+};
+type ClientCv = {
+  id?: string;
+  application_id: string;
+  candidate_name: string;
+  recruiter_summary: string;
+  professional_profile: string;
+  skills: string;
+  qualifications: string;
+  experience: string;
+  projects: string;
+  additional_information: string;
+  source_cv_path: string;
+  status: string;
+};
 
-const LETTERHEAD_IMAGE=ISITHA_LOGO_DATA_URI;
-const empty=(a:QueueItem):ClientCv=>({application_id:a.id,candidate_name:a.candidate_name,recruiter_summary:"",professional_profile:"",skills:"",qualifications:"",experience:"",projects:"",additional_information:"",source_cv_path:a.cv_path,status:"draft"});
+const LETTERHEAD_IMAGE = ISITHA_LOGO_DATA_URI;
+const empty = (a: QueueItem): ClientCv => ({
+  application_id: a.id,
+  candidate_name: a.candidate_name,
+  recruiter_summary: "",
+  professional_profile: "",
+  skills: "",
+  qualifications: "",
+  experience: "",
+  projects: "",
+  additional_information: "",
+  source_cv_path: a.cv_path,
+  status: "draft",
+});
 
-function escapeHtml(value:string){return value.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]||c));}
-function section(title:string,value:string,kind=""){return value.trim()?`<section class="cv-section ${kind}"><h2>${title}</h2><div class="section-copy">${escapeHtml(value).replace(/\n/g,"<br>")}</div></section>`:"";}
-function documentHtml(cv:ClientCv){return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(cv.candidate_name)} - Isitha Global CV</title><style>@page{size:A4;margin:13mm 15mm 16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1e293b;margin:0;line-height:1.5;font-size:10pt}.letterhead{display:flex;justify-content:space-between;align-items:center;padding:0 0 9px}.brand-logo{width:245px;max-width:46%;height:auto;display:block}.contact{text-align:right;font-size:7.7pt;line-height:1.5;color:#64748b}.rule{height:5px;background:#172033;border-right:52px solid #b99648;margin-bottom:20px}.candidate{padding:0 0 14px;border-bottom:1px solid #d9dee7}.candidate h1{font-size:27pt;line-height:1.05;margin:0;color:#172033;letter-spacing:-.02em}.candidate p{margin:7px 0 0;text-transform:uppercase;letter-spacing:.16em;font-size:8pt;color:#a88436;font-weight:700}.privacy{margin-top:7px;font-size:7.7pt;color:#94a3b8}.cv-section{break-inside:avoid;page-break-inside:avoid;margin-top:17px}.cv-section h2{font-size:9.3pt;text-transform:uppercase;letter-spacing:.12em;color:#172033;border-bottom:1.5px solid #b99648;margin:0 0 7px;padding-bottom:4px}.section-copy{white-space:normal;color:#334155}.summary{background:#fbf7ed;border-left:4px solid #b99648;padding:12px 14px;margin-top:17px}.summary h2{border:0;margin-bottom:5px;padding:0}.summary .section-copy{color:#263244}.skills .section-copy{line-height:1.55}.footer{margin-top:24px;padding-top:8px;border-top:1px solid #d9dee7;font-size:7.2pt;color:#94a3b8;text-align:center}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cv-section{break-inside:avoid;page-break-inside:avoid}}</style></head><body><div class="letterhead"><img class="brand-logo" src="${LETTERHEAD_IMAGE}" alt="Isitha Global"><div class="contact">31 Heugh Road, Walmer<br>Eastern Cape, 6065<br>+44 203 834 9241<br>enquiries@isitha.global<br>www.isitha.global</div></div><div class="rule"></div><div class="candidate"><h1>${escapeHtml(cv.candidate_name)}</h1><p>Client Candidate Profile</p><div class="privacy">Prepared by Isitha Global · Personal contact details removed for client presentation.</div></div>${section("Recruiter Summary",cv.recruiter_summary,"summary")}${section("Professional Profile",cv.professional_profile)}${section("Key Skills",cv.skills,"skills")}${section("Qualifications",cv.qualifications)}${section("Professional Experience",cv.experience)}${section("Selected Projects",cv.projects)}${section("Additional Information",cv.additional_information)}<div class="footer">Isitha Global · Global Professionals. Real Results · www.isitha.global</div></body></html>`;}
+function escapeHtml(value: string) {
+  return value.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ] || c,
+  );
+}
+function section(title: string, value: string, kind = "") {
+  return value.trim()
+    ? `<section class="cv-section ${kind}"><h2>${title}</h2><div class="section-copy">${escapeHtml(value).replace(/\n/g, "<br>")}</div></section>`
+    : "";
+}
+function documentHtml(cv: ClientCv) {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(cv.candidate_name)} - Isitha Global CV</title><style>@page{size:A4;margin:13mm 15mm 16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1e293b;margin:0;line-height:1.5;font-size:10pt}.letterhead{display:flex;justify-content:space-between;align-items:center;padding:0 0 9px}.brand-logo{width:245px;max-width:46%;height:auto;display:block}.contact{text-align:right;font-size:7.7pt;line-height:1.5;color:#64748b}.rule{height:5px;background:#172033;border-right:52px solid #b99648;margin-bottom:20px}.candidate{padding:0 0 14px;border-bottom:1px solid #d9dee7}.candidate h1{font-size:27pt;line-height:1.05;margin:0;color:#172033;letter-spacing:-.02em}.candidate p{margin:7px 0 0;text-transform:uppercase;letter-spacing:.16em;font-size:8pt;color:#a88436;font-weight:700}.privacy{margin-top:7px;font-size:7.7pt;color:#94a3b8}.cv-section{break-inside:avoid;page-break-inside:avoid;margin-top:17px}.cv-section h2{font-size:9.3pt;text-transform:uppercase;letter-spacing:.12em;color:#172033;border-bottom:1.5px solid #b99648;margin:0 0 7px;padding-bottom:4px}.section-copy{white-space:normal;color:#334155}.summary{background:#fbf7ed;border-left:4px solid #b99648;padding:12px 14px;margin-top:17px}.summary h2{border:0;margin-bottom:5px;padding:0}.summary .section-copy{color:#263244}.skills .section-copy{line-height:1.55}.footer{margin-top:24px;padding-top:8px;border-top:1px solid #d9dee7;font-size:7.2pt;color:#94a3b8;text-align:center}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cv-section{break-inside:avoid;page-break-inside:avoid}}</style></head><body><div class="letterhead"><img class="brand-logo" src="${LETTERHEAD_IMAGE}" alt="Isitha Global"><div class="contact">31 Heugh Road, Walmer<br>Eastern Cape, 6065<br>+44 203 834 9241<br>enquiries@isitha.global<br>www.isitha.global</div></div><div class="rule"></div><div class="candidate"><h1>${escapeHtml(cv.candidate_name)}</h1><p>Client Candidate Profile</p><div class="privacy">Prepared by Isitha Global · Personal contact details removed for client presentation.</div></div>${section("Recruiter Summary", cv.recruiter_summary, "summary")}${section("Professional Profile", cv.professional_profile)}${section("Key Skills", cv.skills, "skills")}${section("Qualifications", cv.qualifications)}${section("Professional Experience", cv.experience)}${section("Selected Projects", cv.projects)}${section("Additional Information", cv.additional_information)}<div class="footer">Isitha Global · Global Professionals. Real Results · www.isitha.global</div></body></html>`;
+}
 
-function PreviewSection({title,value,summary=false}:{title:string;value:string;summary?:boolean}){if(!value.trim())return null;return <section className={summary?"mt-5 border-l-4 border-amber-600 bg-amber-50/60 px-5 py-4":"mt-6 break-inside-avoid"}><h3 className={summary?"text-xs font-bold uppercase tracking-[.14em] text-slate-800":"border-b-2 border-amber-600 pb-1.5 text-xs font-bold uppercase tracking-[.14em] text-slate-800"}>{title}</h3><div className="mt-2 whitespace-pre-line text-[13px] leading-6 text-slate-700">{value}</div></section>}
+function PreviewSection({
+  title,
+  value,
+  summary = false,
+}: {
+  title: string;
+  value: string;
+  summary?: boolean;
+}) {
+  if (!value.trim()) return null;
+  return (
+    <section
+      className={
+        summary
+          ? "mt-5 border-l-4 border-amber-600 bg-amber-50/60 px-5 py-4"
+          : "mt-6 break-inside-avoid"
+      }
+    >
+      <h3
+        className={
+          summary
+            ? "text-xs font-bold uppercase tracking-[.14em] text-slate-800"
+            : "border-b-2 border-amber-600 pb-1.5 text-xs font-bold uppercase tracking-[.14em] text-slate-800"
+        }
+      >
+        {title}
+      </h3>
+      <div className="mt-2 whitespace-pre-line text-[13px] leading-6 text-slate-700">
+        {value}
+      </div>
+    </section>
+  );
+}
 
-export default function ClientCvPage(){
- const supabase=useMemo(()=>createClient(),[]);const[queue,setQueue]=useState<QueueItem[]>([]);const[selected,setSelected]=useState<QueueItem|null>(null);const[cv,setCv]=useState<ClientCv|null>(null);const[working,setWorking]=useState(false);const[message,setMessage]=useState("");
- useEffect(()=>{void load()},[]);
- async function load(){const{data,error}=await supabase.from("candidate_applications").select("id,candidate_name,cv_path,status,job_id,jobs(title)").in("status",["client_cv","client_cv_ready"]).order("created_at",{ascending:true});if(error){setMessage("Client CV queue could not be loaded.");return}setQueue((data||[]) as unknown as QueueItem[])}
- async function selectItem(a:QueueItem){setSelected(a);setMessage("");const{data}=await supabase.from("client_cvs").select("*").eq("application_id",a.id).maybeSingle();setCv((data as ClientCv|null)||empty(a));}
- async function generate(){if(!selected||!cv)return;setWorking(true);setMessage("");try{const{data:{session}}=await supabase.auth.getSession();if(!session?.access_token){window.location.href="/login";return}const{data:signed,error}=await supabase.storage.from("candidate-cvs").createSignedUrl(selected.cv_path,300);if(error||!signed?.signedUrl)throw new Error("Original CV could not be opened.");const response=await fetch("/api/reformat-cv",{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${session.access_token}`},body:JSON.stringify({cvUrl:signed.signedUrl,fileName:selected.cv_path.split("/").pop()||"candidate-cv",candidateName:cv.candidate_name,jobTitle:selected.jobs?.title||null})});const result=await response.json();if(!response.ok)throw new Error(result.error||"CV reformatting failed");const next={...cv,...result,candidate_name:cv.candidate_name};setCv(next);const{data:saved,error:saveError}=await supabase.from("client_cvs").upsert({...next,generated_at:new Date().toISOString(),updated_at:new Date().toISOString()},{onConflict:"application_id"}).select().single();if(saveError)throw saveError;setCv(saved as ClientCv);await supabase.from("candidate_applications").update({status:"client_cv_ready"}).eq("id",selected.id);await load();setMessage("Client CV generated. Review the details and candidate name before exporting.");}catch(e){setMessage(e instanceof Error?e.message:"CV could not be generated.");}finally{setWorking(false)}}
- async function save(){if(!cv)return;const{data,error}=await supabase.from("client_cvs").upsert({...cv,updated_at:new Date().toISOString()},{onConflict:"application_id"}).select().single();if(error){setMessage("Changes could not be saved.");return}setCv(data as ClientCv);setMessage("Changes saved.")}
- function word(){if(!cv)return;const blob=new Blob([documentHtml(cv)],{type:"application/msword"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`${cv.candidate_name.replace(/[^a-z0-9]+/gi,"-")}-Isitha-Global-CV.doc`;a.click();URL.revokeObjectURL(url)}
- function pdf(){if(!cv)return;const w=window.open("","_blank");if(!w){setMessage("Please allow pop-ups to open the PDF print preview.");return}w.document.write(documentHtml(cv));w.document.close();const print=()=>{w.focus();w.print()};const logo=w.document.querySelector("img");if(logo&&!logo.complete){logo.addEventListener("load",()=>setTimeout(print,100),{once:true});logo.addEventListener("error",()=>setTimeout(print,100),{once:true});setTimeout(print,1800)}else setTimeout(print,250)}
- const fields:[keyof ClientCv,string][]=[["recruiter_summary","Recruiter summary"],["professional_profile","Professional profile"],["skills","Key skills"],["qualifications","Qualifications"],["experience","Experience"],["projects","Selected projects"],["additional_information","Additional information"]];
- return <main className="min-h-screen bg-slate-100"><header className="border-b bg-white"><div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5"><div><h1 className="text-2xl font-bold text-slate-900">Client CV Builder</h1><p className="text-sm text-slate-500">Prepare a polished, redacted Isitha Global CV for client presentation.</p></div><Link href="/" className="rounded border px-4 py-2 text-sm font-semibold">Dashboard</Link></div></header><div className="mx-auto grid max-w-7xl gap-6 px-6 py-8 lg:grid-cols-[320px_1fr]"><aside className="h-fit rounded-xl bg-white p-5 shadow-sm"><h2 className="font-bold">Ready for client CV</h2><p className="mt-1 text-sm text-slate-500">{queue.length} candidate{queue.length===1?"":"s"}</p><div className="mt-4 space-y-2">{queue.length===0?<p className="rounded border-2 border-dashed p-5 text-sm text-slate-500">No candidates have been moved forward yet.</p>:queue.map(a=><button key={a.id} onClick={()=>void selectItem(a)} className={`w-full rounded-lg border p-3 text-left ${selected?.id===a.id?"border-amber-500 bg-amber-50":"border-slate-200"}`}><div className="font-semibold">{a.candidate_name}</div><div className="text-xs text-slate-500">{a.jobs?.title||"Job"} · {a.status==="client_cv_ready"?"Draft ready":"Needs reformatting"}</div></button>)}</div></aside><section>{!cv?<div className="rounded-xl bg-white py-24 text-center text-slate-500 shadow-sm">Select a candidate to prepare their client CV.</div>:<><div className="rounded-xl bg-white p-6 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-4"><div className="min-w-[260px] flex-1"><p className="text-xs font-bold uppercase tracking-widest text-amber-700">Candidate details</p><label className="mt-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">Display name</label><input value={cv.candidate_name} onChange={e=>setCv({...cv,candidate_name:e.target.value})} className="mt-1 w-full max-w-xl rounded-lg border border-slate-300 px-3 py-2 text-xl font-bold"/><p className="mt-2 text-sm text-slate-500">Personal email, phone, home address and social/contact details are excluded from the client version.</p></div><div className="flex flex-wrap gap-2"><button onClick={()=>void generate()} disabled={working} className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{working?"Reformatting...":cv.professional_profile?"Reformat again":"Reformat CV"}</button><button onClick={()=>void save()} className="rounded border px-4 py-2 text-sm font-semibold">Save</button><button onClick={word} className="rounded border px-4 py-2 text-sm font-semibold">Download Word</button><button onClick={pdf} className="rounded bg-amber-600 px-4 py-2 text-sm font-semibold text-white">Print / Save PDF</button></div></div>{message&&<div className="mt-4 rounded bg-slate-50 p-3 text-sm">{message}</div>}</div><div className="mt-6"><div className="mb-2 flex items-center justify-between"><h2 className="font-bold text-slate-800">Client preview</h2><span className="text-xs text-slate-500">A4-style preview</span></div><div className="mx-auto min-h-[1050px] max-w-[850px] bg-white shadow-lg"><div className="flex items-center justify-between gap-5 px-10 pb-4 pt-9"><img src={LETTERHEAD_IMAGE} alt="Isitha Global" className="h-auto w-[245px] max-w-[46%]"/><div className="text-right text-[11px] leading-[1.55] text-slate-500">31 Heugh Road, Walmer<br/>Eastern Cape, 6065<br/>+44 203 834 9241<br/>enquiries@isitha.global<br/>www.isitha.global</div></div><div className="h-[5px] bg-slate-800"><div className="ml-auto h-full w-[52px] bg-amber-600"/></div><div className="px-10 pb-10 pt-7"><div className="border-b border-slate-200 pb-5"><div className="text-[36px] font-bold leading-none tracking-tight text-slate-800">{cv.candidate_name}</div><div className="mt-2 text-[11px] font-bold uppercase tracking-[.18em] text-amber-700">Client Candidate Profile</div><div className="mt-2 text-[10px] text-slate-400">Prepared by Isitha Global · Personal contact details removed for client presentation.</div></div><PreviewSection title="Recruiter Summary" value={cv.recruiter_summary} summary/><PreviewSection title="Professional Profile" value={cv.professional_profile}/><PreviewSection title="Key Skills" value={cv.skills}/><PreviewSection title="Qualifications" value={cv.qualifications}/><PreviewSection title="Professional Experience" value={cv.experience}/><PreviewSection title="Selected Projects" value={cv.projects}/><PreviewSection title="Additional Information" value={cv.additional_information}/><div className="mt-8 border-t pt-3 text-center text-[10px] text-slate-400">Isitha Global · Global Professionals. Real Results · www.isitha.global</div></div></div></div><div className="mt-6 rounded-xl bg-white p-6 shadow-sm"><h2 className="text-lg font-bold">Edit CV content</h2><p className="mt-1 text-sm text-slate-500">Changes update the preview above. Save before leaving the page.</p><div className="mt-5 space-y-5">{fields.map(([key,label])=><div key={key}><label className="mb-2 block text-sm font-bold">{label}</label><textarea rows={key==="experience"?12:5} value={String(cv[key]||"")} onChange={e=>setCv({...cv,[key]:e.target.value})} className="w-full rounded-lg border border-slate-300 px-4 py-3"/></div>)}</div></div></>}</section></div></main>;
+export default function ClientCvPage() {
+  const supabase = useMemo(() => createClient(), []);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [selected, setSelected] = useState<QueueItem | null>(null);
+  const [cv, setCv] = useState<ClientCv | null>(null);
+  const [working, setWorking] = useState(false);
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    void load();
+  }, []);
+  async function load() {
+    const { data, error } = await supabase
+      .from("candidate_applications")
+      .select("id,candidate_name,cv_path,status,job_id,jobs(title)")
+      .in("status", ["client_cv", "client_cv_ready"])
+      .order("created_at", { ascending: true });
+    if (error) {
+      setMessage("Client CV queue could not be loaded.");
+      return;
+    }
+    setQueue((data || []) as unknown as QueueItem[]);
+  }
+  async function selectItem(a: QueueItem) {
+    setSelected(a);
+    setMessage("");
+    const { data } = await supabase
+      .from("client_cvs")
+      .select("*")
+      .eq("application_id", a.id)
+      .maybeSingle();
+    setCv((data as ClientCv | null) || empty(a));
+  }
+  async function generate() {
+    if (!selected || !cv) return;
+    setWorking(true);
+    setMessage("");
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        window.location.href = "/login";
+        return;
+      }
+      const { data: signed, error } = await supabase.storage
+        .from("candidate-cvs")
+        .createSignedUrl(selected.cv_path, 300);
+      if (error || !signed?.signedUrl)
+        throw new Error("Original CV could not be opened.");
+      const response = await fetch("/api/reformat-cv", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          cvUrl: signed.signedUrl,
+          fileName: selected.cv_path.split("/").pop() || "candidate-cv",
+          candidateName: cv.candidate_name,
+          jobTitle: selected.jobs?.title || null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error || "CV reformatting failed");
+      const next = { ...cv, ...result, candidate_name: cv.candidate_name };
+      setCv(next);
+      const { data: saved, error: saveError } = await supabase
+        .from("client_cvs")
+        .upsert(
+          {
+            ...next,
+            generated_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "application_id" },
+        )
+        .select()
+        .single();
+      if (saveError) throw saveError;
+      setCv(saved as ClientCv);
+      await supabase
+        .from("candidate_applications")
+        .update({ status: "client_cv_ready" })
+        .eq("id", selected.id);
+      await load();
+      setMessage(
+        "Client CV generated. Review the details and candidate name before exporting.",
+      );
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "CV could not be generated.");
+    } finally {
+      setWorking(false);
+    }
+  }
+  async function save() {
+    if (!cv) return;
+    const { data, error } = await supabase
+      .from("client_cvs")
+      .upsert(
+        { ...cv, updated_at: new Date().toISOString() },
+        { onConflict: "application_id" },
+      )
+      .select()
+      .single();
+    if (error) {
+      setMessage("Changes could not be saved.");
+      return;
+    }
+    setCv(data as ClientCv);
+    setMessage("Changes saved.");
+  }
+  async function openOriginalCv() {
+    if (!selected) return;
+    setMessage("");
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      window.location.href = "/login";
+      return;
+    }
+    const { data, error } = await supabase.storage
+      .from("candidate-cvs")
+      .createSignedUrl(selected.cv_path, 300);
+    if (error || !data?.signedUrl) {
+      setMessage("The original CV could not be opened. Please try again.");
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  }
+  async function downloadOriginalCv() {
+    if (!selected) return;
+    setMessage("");
+    const { data, error } = await supabase.storage
+      .from("candidate-cvs")
+      .download(selected.cv_path);
+    if (error || !data) {
+      setMessage("The original CV could not be downloaded. Please try again.");
+      return;
+    }
+    const url = URL.createObjectURL(data);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download =
+      selected.cv_path.split("/").pop() ||
+      `${selected.candidate_name}-original-CV`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+  async function deleteReformattedCv() {
+    if (!selected || !cv?.id || working) return;
+    if (
+      !window.confirm(
+        `Delete the reformatted CV for ${cv.candidate_name}? The original CV will be kept.`,
+      )
+    )
+      return;
+    setWorking(true);
+    setMessage("");
+    const { error } = await supabase
+      .from("client_cvs")
+      .delete()
+      .eq("id", cv.id);
+    if (error) {
+      setMessage("The reformatted CV could not be deleted.");
+    } else {
+      await supabase
+        .from("candidate_applications")
+        .update({ status: "client_cv" })
+        .eq("id", selected.id);
+      setCv(empty(selected));
+      await load();
+      setMessage(
+        "The reformatted CV was deleted. The original CV has been kept.",
+      );
+    }
+    setWorking(false);
+  }
+  async function deleteCandidateAndCvs() {
+    if (!selected || working) return;
+    if (
+      !window.confirm(
+        `Delete ${selected.candidate_name}? This permanently removes the original CV, reformatted CV and candidate from the portal.`,
+      )
+    )
+      return;
+    setWorking(true);
+    setMessage("");
+    const { error: storageError } = await supabase.storage
+      .from("candidate-cvs")
+      .remove([selected.cv_path]);
+    if (storageError) {
+      setMessage(
+        "The original CV could not be deleted, so the candidate was not removed.",
+      );
+      setWorking(false);
+      return;
+    }
+    const { error: recordError } = await supabase
+      .from("candidate_applications")
+      .delete()
+      .eq("id", selected.id);
+    if (recordError) {
+      setMessage(
+        "The CV was deleted, but the candidate record could not be removed. Please try delete again.",
+      );
+    } else {
+      setSelected(null);
+      setCv(null);
+      await load();
+      setMessage("The candidate and both CV versions were deleted.");
+    }
+    setWorking(false);
+  }
+  function word() {
+    if (!cv) return;
+    const blob = new Blob([documentHtml(cv)], { type: "application/msword" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${cv.candidate_name.replace(/[^a-z0-9]+/gi, "-")}-Isitha-Global-CV.doc`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  function pdf() {
+    if (!cv) return;
+    const w = window.open("", "_blank");
+    if (!w) {
+      setMessage("Please allow pop-ups to open the PDF print preview.");
+      return;
+    }
+    w.document.write(documentHtml(cv));
+    w.document.close();
+    const print = () => {
+      w.focus();
+      w.print();
+    };
+    const logo = w.document.querySelector("img");
+    if (logo && !logo.complete) {
+      logo.addEventListener("load", () => setTimeout(print, 100), {
+        once: true,
+      });
+      logo.addEventListener("error", () => setTimeout(print, 100), {
+        once: true,
+      });
+      setTimeout(print, 1800);
+    } else setTimeout(print, 250);
+  }
+  const fields: [keyof ClientCv, string][] = [
+    ["recruiter_summary", "Recruiter summary"],
+    ["professional_profile", "Professional profile"],
+    ["skills", "Key skills"],
+    ["qualifications", "Qualifications"],
+    ["experience", "Experience"],
+    ["projects", "Selected projects"],
+    ["additional_information", "Additional information"],
+  ];
+  return (
+    <main className="min-h-screen bg-slate-100">
+      <header className="border-b bg-white">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Client CV Builder
+            </h1>
+            <p className="text-sm text-slate-500">
+              Prepare a polished, redacted Isitha Global CV for client
+              presentation.
+            </p>
+          </div>
+          <Link
+            href="/"
+            className="rounded border px-4 py-2 text-sm font-semibold"
+          >
+            Dashboard
+          </Link>
+        </div>
+      </header>
+      <div className="mx-auto grid max-w-7xl gap-6 px-6 py-8 lg:grid-cols-[320px_1fr]">
+        <aside className="h-fit rounded-xl bg-white p-5 shadow-sm">
+          <h2 className="font-bold">Ready for client CV</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {queue.length} candidate{queue.length === 1 ? "" : "s"}
+          </p>
+          <div className="mt-4 space-y-2">
+            {queue.length === 0 ? (
+              <p className="rounded border-2 border-dashed p-5 text-sm text-slate-500">
+                No candidates have been moved forward yet.
+              </p>
+            ) : (
+              queue.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => void selectItem(a)}
+                  className={`w-full rounded-lg border p-3 text-left ${selected?.id === a.id ? "border-amber-500 bg-amber-50" : "border-slate-200"}`}
+                >
+                  <div className="font-semibold">{a.candidate_name}</div>
+                  <div className="text-xs text-slate-500">
+                    {a.jobs?.title || "Job"} ·{" "}
+                    {a.status === "client_cv_ready"
+                      ? "Draft ready"
+                      : "Needs reformatting"}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </aside>
+        <section>
+          {!cv ? (
+            <div className="rounded-xl bg-white py-24 text-center text-slate-500 shadow-sm">
+              Select a candidate to prepare their client CV.
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl bg-white p-6 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-[260px] flex-1">
+                    <p className="text-xs font-bold uppercase tracking-widest text-amber-700">
+                      Candidate details
+                    </p>
+                    <label className="mt-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Display name
+                    </label>
+                    <input
+                      value={cv.candidate_name}
+                      onChange={(e) =>
+                        setCv({ ...cv, candidate_name: e.target.value })
+                      }
+                      className="mt-1 w-full max-w-xl rounded-lg border border-slate-300 px-3 py-2 text-xl font-bold"
+                    />
+                    <p className="mt-2 text-sm text-slate-500">
+                      Personal email, phone, home address and social/contact
+                      details are excluded from the client version.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => void openOriginalCv()}
+                      className="rounded border border-amber-600 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900"
+                    >
+                      View original CV
+                    </button>
+                    <button
+                      onClick={() => void downloadOriginalCv()}
+                      className="rounded border border-slate-400 bg-white px-4 py-2 text-sm font-bold text-slate-800"
+                    >
+                      Download original
+                    </button>
+                    <button
+                      onClick={() => void generate()}
+                      disabled={working}
+                      className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {working
+                        ? "Reformatting..."
+                        : cv.professional_profile
+                          ? "Reformat again"
+                          : "Reformat CV"}
+                    </button>
+                    <button
+                      onClick={() => void save()}
+                      className="rounded border px-4 py-2 text-sm font-semibold"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={word}
+                      className="rounded border px-4 py-2 text-sm font-semibold"
+                    >
+                      Download Word
+                    </button>
+                    <button
+                      onClick={pdf}
+                      className="rounded bg-amber-600 px-4 py-2 text-sm font-semibold text-white"
+                    >
+                      Print / Save PDF
+                    </button>
+                    {cv.id && (
+                      <button
+                        onClick={() => void deleteReformattedCv()}
+                        disabled={working}
+                        className="rounded border border-red-600 bg-red-50 px-4 py-2 text-sm font-bold text-red-800 disabled:opacity-50"
+                      >
+                        Delete reformatted CV
+                      </button>
+                    )}
+                    <button
+                      onClick={() => void deleteCandidateAndCvs()}
+                      disabled={working}
+                      className="rounded bg-red-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                    >
+                      Delete candidate & both CVs
+                    </button>
+                  </div>
+                </div>
+                {message && (
+                  <div className="mt-4 rounded bg-slate-50 p-3 text-sm">
+                    {message}
+                  </div>
+                )}
+              </div>
+              <div className="mt-6">
+                <div className="mb-2 flex items-center justify-between">
+                  <h2 className="font-bold text-slate-800">Client preview</h2>
+                  <span className="text-xs text-slate-500">
+                    A4-style preview
+                  </span>
+                </div>
+                <div className="mx-auto min-h-[1050px] max-w-[850px] bg-white shadow-lg">
+                  <div className="flex items-center justify-between gap-5 px-10 pb-4 pt-9">
+                    <img
+                      src={LETTERHEAD_IMAGE}
+                      alt="Isitha Global"
+                      className="h-auto w-[245px] max-w-[46%]"
+                    />
+                    <div className="text-right text-[11px] leading-[1.55] text-slate-500">
+                      31 Heugh Road, Walmer
+                      <br />
+                      Eastern Cape, 6065
+                      <br />
+                      +44 203 834 9241
+                      <br />
+                      enquiries@isitha.global
+                      <br />
+                      www.isitha.global
+                    </div>
+                  </div>
+                  <div className="h-[5px] bg-slate-800">
+                    <div className="ml-auto h-full w-[52px] bg-amber-600" />
+                  </div>
+                  <div className="px-10 pb-10 pt-7">
+                    <div className="border-b border-slate-200 pb-5">
+                      <div className="text-[36px] font-bold leading-none tracking-tight text-slate-800">
+                        {cv.candidate_name}
+                      </div>
+                      <div className="mt-2 text-[11px] font-bold uppercase tracking-[.18em] text-amber-700">
+                        Client Candidate Profile
+                      </div>
+                      <div className="mt-2 text-[10px] text-slate-400">
+                        Prepared by Isitha Global · Personal contact details
+                        removed for client presentation.
+                      </div>
+                    </div>
+                    <PreviewSection
+                      title="Recruiter Summary"
+                      value={cv.recruiter_summary}
+                      summary
+                    />
+                    <PreviewSection
+                      title="Professional Profile"
+                      value={cv.professional_profile}
+                    />
+                    <PreviewSection title="Key Skills" value={cv.skills} />
+                    <PreviewSection
+                      title="Qualifications"
+                      value={cv.qualifications}
+                    />
+                    <PreviewSection
+                      title="Professional Experience"
+                      value={cv.experience}
+                    />
+                    <PreviewSection
+                      title="Selected Projects"
+                      value={cv.projects}
+                    />
+                    <PreviewSection
+                      title="Additional Information"
+                      value={cv.additional_information}
+                    />
+                    <div className="mt-8 border-t pt-3 text-center text-[10px] text-slate-400">
+                      Isitha Global · Global Professionals. Real Results ·
+                      www.isitha.global
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-6 rounded-xl bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-bold">Edit CV content</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Changes update the preview above. Save before leaving the
+                  page.
+                </p>
+                <div className="mt-5 space-y-5">
+                  {fields.map(([key, label]) => (
+                    <div key={key}>
+                      <label className="mb-2 block text-sm font-bold">
+                        {label}
+                      </label>
+                      <textarea
+                        rows={key === "experience" ? 12 : 5}
+                        value={String(cv[key] || "")}
+                        onChange={(e) =>
+                          setCv({ ...cv, [key]: e.target.value })
+                        }
+                        className="w-full rounded-lg border border-slate-300 px-4 py-3"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+    </main>
+  );
 }
