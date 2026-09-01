@@ -440,64 +440,62 @@ export default function ClientCvPage() {
                       details are excluded from the client version.
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => void openOriginalCv()}
-                      className="rounded border border-amber-600 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900"
-                    >
-                      View original CV
-                    </button>
-                    <button
-                      onClick={() => void downloadOriginalCv()}
-                      className="rounded border border-slate-400 bg-white px-4 py-2 text-sm font-bold text-slate-800"
-                    >
-                      Download original
-                    </button>
+                  <div className="flex w-full flex-col gap-3 lg:w-auto lg:max-w-xl">
                     <button
                       onClick={() => void generate()}
                       disabled={working}
-                      className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      className="w-full rounded-lg bg-slate-900 px-5 py-3 text-base font-bold text-white shadow-sm disabled:opacity-50"
                     >
-                      {working
-                        ? "Reformatting..."
-                        : cv.professional_profile
-                          ? "Reformat again"
-                          : "Reformat CV"}
+                      {working ? "AI reformatting..." : "AI Reformat CV"}
                     </button>
-                    <button
-                      onClick={() => void save()}
-                      className="rounded border px-4 py-2 text-sm font-semibold"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={word}
-                      className="rounded border px-4 py-2 text-sm font-semibold"
-                    >
-                      Download reformatted CV
-                    </button>
-                    <button
-                      onClick={pdf}
-                      className="rounded bg-amber-600 px-4 py-2 text-sm font-semibold text-white"
-                    >
-                      Print / Save PDF
-                    </button>
-                    {cv.id && (
+                    <div className="flex flex-wrap gap-2">
                       <button
-                        onClick={() => void deleteReformattedCv()}
-                        disabled={working}
-                        className="rounded border border-red-600 bg-red-50 px-4 py-2 text-sm font-bold text-red-800 disabled:opacity-50"
+                        onClick={() => void openOriginalCv()}
+                        className="rounded border border-amber-600 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900"
                       >
-                        Delete reformatted CV
+                        View original CV
                       </button>
-                    )}
-                    <button
-                      onClick={() => void deleteCandidateAndCvs()}
-                      disabled={working}
-                      className="rounded bg-red-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-                    >
-                      Delete candidate & both CVs
-                    </button>
+                      <button
+                        onClick={() => void downloadOriginalCv()}
+                        className="rounded border border-slate-400 bg-white px-4 py-2 text-sm font-bold text-slate-800"
+                      >
+                        Download original
+                      </button>
+                      <button
+                        onClick={() => void save()}
+                        className="rounded border px-4 py-2 text-sm font-semibold"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={word}
+                        className="rounded border px-4 py-2 text-sm font-semibold"
+                      >
+                        Download reformatted CV
+                      </button>
+                      <button
+                        onClick={pdf}
+                        className="rounded bg-amber-600 px-4 py-2 text-sm font-semibold text-white"
+                      >
+                        Print / Save PDF
+                      </button>
+                      {cv.id && (
+                        <button
+                          onClick={() => void deleteReformattedCv()}
+                          disabled={working}
+                          className="rounded border border-red-600 bg-red-50 px-4 py-2 text-sm font-bold text-red-800 disabled:opacity-50"
+                        >
+                          Delete reformatted CV
+                        </button>
+                      )}
+                      <button
+                        onClick={() => void deleteCandidateAndCvs()}
+                        disabled={working}
+                        className="rounded bg-red-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                      >
+                        Delete candidate & both CVs
+                      </button>
+                    </div>
                   </div>
                 </div>
                 {message && (
