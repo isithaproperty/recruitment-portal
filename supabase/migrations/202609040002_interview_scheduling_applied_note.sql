@@ -1,2 +1,0 @@
--- Interview scheduling schema and token-scoped RPC updates were applied to the original recruitment Supabase project.
--- See 202609040001_interview_scheduling.sql for the full migration.
