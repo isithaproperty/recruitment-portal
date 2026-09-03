@@ -1,0 +1,2 @@
+-- Follow-on migration marker for interview workflow changes.
+-- The live database schema is managed by 202609040001_interview_scheduling.sql.
