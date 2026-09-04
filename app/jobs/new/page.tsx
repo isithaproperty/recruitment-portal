@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { RichTextEditor, sanitizeRichTextForSave } from "@/app/components/RichTextEditor";
 
 export default function NewJobPage() {
   const router = useRouter();
@@ -21,6 +22,7 @@ export default function NewJobPage() {
 
   async function handleSaveJob(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if(!jobDescription.replace(/<[^>]*>/g,"").trim())return setMessage("Enter the job description.");
     setSaving(true);
     setMessage("");
     const publicSlug = crypto.randomUUID().replaceAll("-", "").slice(0, 16);
@@ -29,7 +31,7 @@ export default function NewJobPage() {
       client_company: clientName.trim(),
       location: location.trim(),
       minimum_experience: minExperience ? Number(minExperience) : null,
-      job_description: jobDescription.trim(),
+      job_description: sanitizeRichTextForSave(jobDescription).trim(),
       mandatory_requirements: mandatoryRequirements.trim(),
       preferred_requirements: preferredRequirements.trim(),
       closing_date: closingDate || null,
@@ -57,7 +59,10 @@ export default function NewJobPage() {
         <label className="text-sm font-semibold text-slate-700">Location<input required value={location} onChange={e=>setLocation(e.target.value)} className={`${input} mt-2`} placeholder="London, Hybrid or Remote"/></label>
         <label className="text-sm font-semibold text-slate-700">Minimum experience<input type="number" min="0" value={minExperience} onChange={e=>setMinExperience(Number(e.target.value))} className={`${input} mt-2`}/></label>
       </div>
-      <label className="block text-sm font-semibold text-slate-700">Job description<textarea required rows={10} value={jobDescription} onChange={e=>setJobDescription(e.target.value)} className={`${input} mt-2`} placeholder="Paste the full job description here..."/></label>
+      <div className="block text-sm font-semibold text-slate-700">Job description
+        <p className="mt-1 text-xs font-normal text-slate-500">Use bold, headings, bullets or numbered lists. You can also paste formatted text from Word or email.</p>
+        <RichTextEditor value={jobDescription} onChange={setJobDescription}/>
+      </div>
       <label className="block text-sm font-semibold text-slate-700">Mandatory requirements<textarea rows={5} value={mandatoryRequirements} onChange={e=>setMandatoryRequirements(e.target.value)} className={`${input} mt-2`} placeholder="UK experience, JCT knowledge, degree..."/></label>
       <label className="block text-sm font-semibold text-slate-700">Preferred requirements<textarea rows={5} value={preferredRequirements} onChange={e=>setPreferredRequirements(e.target.value)} className={`${input} mt-2`} placeholder="NEC, sector experience, professional membership..."/></label>
       <label className="block text-sm font-semibold text-slate-700">Closing date<input type="date" value={closingDate} onChange={e=>setClosingDate(e.target.value)} className={`${input} mt-2 md:w-72`}/></label>
