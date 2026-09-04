@@ -52,7 +52,7 @@ export default function CvReviewDecisionAlerts(){
         <h2 className="mt-1 text-lg font-extrabold text-[#0b2239]">Review decisions received ({rows.length})</h2>
         <p className="mt-1 text-xs text-[#667085]">{holds} on hold · {declined} do not interview</p>
       </div>
-      <Link href="/client-submissions" className="shrink-0 rounded-lg bg-[#0b2239] px-3 py-2 text-xs font-bold text-white">Open</Link>
+      <Link href="/cv-decisions" className="shrink-0 rounded-lg bg-[#0b2239] px-3 py-2 text-xs font-bold text-white">Open</Link>
     </div>
     <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
       {rows.map(r=><div key={r.id} className="rounded-xl border bg-[#fff9ec] p-3">
