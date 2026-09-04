@@ -22,7 +22,7 @@ export default function NewJobPage() {
 
   async function handleSaveJob(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if(!jobDescription.replace(/<[^>]*>/g,"").trim())return setMessage("Enter the job description.");
+    if (!jobDescription.replace(/<[^>]*>/g, "").trim()) return setMessage("Enter the job description.");
     setSaving(true);
     setMessage("");
     const publicSlug = crypto.randomUUID().replaceAll("-", "").slice(0, 16);
@@ -32,8 +32,8 @@ export default function NewJobPage() {
       location: location.trim(),
       minimum_experience: minExperience ? Number(minExperience) : null,
       job_description: sanitizeRichTextForSave(jobDescription).trim(),
-      mandatory_requirements: mandatoryRequirements.trim(),
-      preferred_requirements: preferredRequirements.trim(),
+      mandatory_requirements: sanitizeRichTextForSave(mandatoryRequirements).trim(),
+      preferred_requirements: sanitizeRichTextForSave(preferredRequirements).trim(),
       closing_date: closingDate || null,
       status: "open",
       public_slug: publicSlug,
@@ -49,6 +49,7 @@ export default function NewJobPage() {
   }
 
   const input = "w-full rounded-lg border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-slate-600";
+  const helper = "mt-1 text-xs font-normal text-slate-500";
 
   return <main className="min-h-screen bg-slate-100">
     <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5"><div><h1 className="text-2xl font-bold text-slate-900">Create a new job</h1><p className="text-sm text-slate-500">Add the job details and matching requirements.</p></div><Link href="/" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Back to dashboard</Link></div></header>
@@ -59,12 +60,22 @@ export default function NewJobPage() {
         <label className="text-sm font-semibold text-slate-700">Location<input required value={location} onChange={e=>setLocation(e.target.value)} className={`${input} mt-2`} placeholder="London, Hybrid or Remote"/></label>
         <label className="text-sm font-semibold text-slate-700">Minimum experience<input type="number" min="0" value={minExperience} onChange={e=>setMinExperience(Number(e.target.value))} className={`${input} mt-2`}/></label>
       </div>
+
       <div className="block text-sm font-semibold text-slate-700">Job description
-        <p className="mt-1 text-xs font-normal text-slate-500">Use bold, headings, bullets or numbered lists. You can also paste formatted text from Word or email.</p>
+        <p className={helper}>Use bold, headings, bullets or numbered lists. You can also paste formatted text from Word or email.</p>
         <RichTextEditor value={jobDescription} onChange={setJobDescription}/>
       </div>
-      <label className="block text-sm font-semibold text-slate-700">Mandatory requirements<textarea rows={5} value={mandatoryRequirements} onChange={e=>setMandatoryRequirements(e.target.value)} className={`${input} mt-2`} placeholder="UK experience, JCT knowledge, degree..."/></label>
-      <label className="block text-sm font-semibold text-slate-700">Preferred requirements<textarea rows={5} value={preferredRequirements} onChange={e=>setPreferredRequirements(e.target.value)} className={`${input} mt-2`} placeholder="NEC, sector experience, professional membership..."/></label>
+
+      <div className="block text-sm font-semibold text-slate-700">Mandatory requirements
+        <p className={helper}>Format essential requirements with bold text, headings, bullets or numbered lists.</p>
+        <RichTextEditor value={mandatoryRequirements} onChange={setMandatoryRequirements}/>
+      </div>
+
+      <div className="block text-sm font-semibold text-slate-700">Preferred requirements
+        <p className={helper}>Use the same formatting for desirable or preferred requirements.</p>
+        <RichTextEditor value={preferredRequirements} onChange={setPreferredRequirements}/>
+      </div>
+
       <label className="block text-sm font-semibold text-slate-700">Closing date<input type="date" value={closingDate} onChange={e=>setClosingDate(e.target.value)} className={`${input} mt-2 md:w-72`}/></label>
       {message&&<p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{message}</p>}
       <div className="flex justify-end gap-3 border-t border-slate-200 pt-6"><Link href="/" className="rounded-lg border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700">Cancel</Link><button type="submit" disabled={saving} className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-semibold text-white disabled:opacity-60">{saving?"Saving...":"Save job"}</button></div>
