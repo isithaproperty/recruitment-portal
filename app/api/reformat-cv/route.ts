@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isTrustedSignedStorageUrl } from "@/lib/supabase/trusted-storage-url";
 
 type RequestBody={cvUrl?:string;fileName?:string;candidateName?:string;jobTitle?:string|null};
 
@@ -36,6 +37,7 @@ export async function POST(request:Request){
 
     const body=(await request.json()) as RequestBody;
     if(!body.cvUrl||!body.candidateName)return NextResponse.json({error:"The candidate CV is missing."},{status:400});
+    if(!isTrustedSignedStorageUrl(body.cvUrl,supabaseUrl,"candidate-cvs"))return NextResponse.json({error:"The CV source is not permitted."},{status:400});
 
     const cvResponse=await fetch(body.cvUrl,{cache:"no-store"});
     if(!cvResponse.ok)return NextResponse.json({error:"The original CV could not be opened."},{status:400});
