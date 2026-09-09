@@ -29,7 +29,7 @@ export async function POST(request:Request){
     const publishableKey=process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
     const openAiKey=process.env.OPENAI_API_KEY;
     if(!supabaseUrl||!publishableKey)return NextResponse.json({error:"Recruitment database configuration is incomplete."},{status:500});
-    if(!openAiKey)return NextResponse.json({error:"CV reformatting is not configured yet. Add the OPENAI_API_KEY environment variable in Vercel."},{status:503});
+    if(!openAiKey)return NextResponse.json({error:"CV redaction is not configured yet. Add the OPENAI_API_KEY environment variable in Vercel."},{status:503});
 
     const userResponse=await fetch(`${supabaseUrl}/auth/v1/user`,{headers:{apikey:publishableKey,Authorization:`Bearer ${accessToken}`},cache:"no-store"});
     if(!userResponse.ok)return NextResponse.json({error:"Please sign in again."},{status:401});
@@ -46,7 +46,7 @@ export async function POST(request:Request){
     form.append("purpose","user_data");
     form.append("file",new File([cvBlob],body.fileName||"candidate-cv",{type:cvBlob.type||"application/octet-stream"}));
     const upload=await fetch("https://api.openai.com/v1/files",{method:"POST",headers:{Authorization:`Bearer ${openAiKey}`},body:form});
-    if(!upload.ok)return NextResponse.json({error:"The CV could not be prepared for reformatting."},{status:502});
+    if(!upload.ok)return NextResponse.json({error:"The CV could not be prepared for redaction."},{status:502});
     const uploaded=(await upload.json()) as {id:string};
 
     try{
@@ -57,21 +57,22 @@ export async function POST(request:Request){
           model:"gpt-5.6-luna",
           reasoning:{effort:"low"},
           input:[
-            {role:"system",content:[{type:"input_text",text:"You reformat CVs for Isitha Recruitment after a human recruiter has approved the candidate for client submission. Preserve the candidate name and all job-relevant employment history, qualifications, skills, achievements and project experience. Remove all personal contact data including email addresses, phone numbers, street/home addresses, ID/passport numbers, dates of birth, marital/family details, photographs and social-media handles unless a recruiter would need a professional portfolio link. Do not invent facts or improve qualifications. Rewrite only for clarity, consistency and professional presentation. Return valid JSON only with exactly these string keys: recruiter_summary, professional_profile, skills, qualifications, experience, projects, additional_information. Use concise plain text suitable for an Isitha-branded client CV."}]},
-            {role:"user",content:[{type:"input_text",text:`Candidate: ${body.candidateName}\nTarget role: ${body.jobTitle||"Not specified"}`},{type:"input_file",file_id:uploaded.id}]}
+            {role:"system",content:[{type:"input_text",text:"You prepare client CVs for Isitha Recruitment. This is a REDACTION task, not a rewriting, summarising, scoring or enhancement task. Keep the candidate's original CV content, wording, chronology, section order, job titles, employment history, qualifications, skills, achievements and project details as written. Do not add recruiter comments, AI comments, recommendations, summaries, inferred skills, rewritten profiles, improved wording, or facts that do not appear in the source CV. Remove only personal or sensitive identifying information that should not be sent to a client: personal email addresses, personal phone/mobile numbers, street/home/postal addresses, ID/passport numbers, dates of birth/age, marital/family details, photographs, and personal social-media handles. Keep the candidate name. Keep professional portfolio or work links only when they are clearly relevant to the candidate's work. Return valid JSON only with exactly these string keys: recruiter_summary, professional_profile, skills, qualifications, experience, projects, additional_information. recruiter_summary MUST always be an empty string. Populate the remaining fields only with content actually present in the source CV, preserving the source wording and order as closely as possible. If the source has no content for a field, return an empty string. Do not mention that AI was used and do not add any commentary."}]},
+            {role:"user",content:[{type:"input_text",text:`Candidate: ${body.candidateName}\nTarget role: ${body.jobTitle||"Not specified"}\nInstruction: redact personal information only; otherwise preserve the source CV.`},{type:"input_file",file_id:uploaded.id}]}
           ]
         })
       });
-      if(!response.ok)return NextResponse.json({error:"The CV could not be reformatted right now."},{status:502});
+      if(!response.ok)return NextResponse.json({error:"The CV could not be redacted right now."},{status:502});
       const payload=await response.json();
       const text=outputText(payload).trim().replace(/^```json\s*/i,"").replace(/```$/i,"").trim();
       const result=JSON.parse(text) as Record<string,string>;
+      result.recruiter_summary="";
       return NextResponse.json(result);
     }finally{
       await fetch(`https://api.openai.com/v1/files/${encodeURIComponent(uploaded.id)}`,{method:"DELETE",headers:{Authorization:`Bearer ${openAiKey}`}}).catch(()=>undefined);
     }
   }catch(error){
     if(process.env.NODE_ENV!=="production")console.error(error);
-    return NextResponse.json({error:"The CV could not be reformatted. Please try again."},{status:500});
+    return NextResponse.json({error:"The CV could not be redacted. Please try again."},{status:500});
   }
 }
