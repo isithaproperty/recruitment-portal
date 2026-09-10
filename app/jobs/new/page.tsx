@@ -25,6 +25,12 @@ export default function NewJobPage() {
     if (!jobDescription.replace(/<[^>]*>/g, "").trim()) return setMessage("Enter the job description.");
     setSaving(true);
     setMessage("");
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      setMessage("Your session has expired. Please sign in again before creating the job.");
+      setSaving(false);
+      return;
+    }
     const publicSlug = crypto.randomUUID().replaceAll("-", "").slice(0, 16);
     const { data, error } = await supabase.from("jobs").insert({
       title: jobTitle.trim(),
@@ -37,6 +43,7 @@ export default function NewJobPage() {
       closing_date: closingDate || null,
       status: "open",
       public_slug: publicSlug,
+      created_by: user.id,
     }).select("id").single();
 
     if (error) {

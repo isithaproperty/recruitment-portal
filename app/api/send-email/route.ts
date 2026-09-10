@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-type EmailKind = "client_submission" | "application_received" | "client_decision" | "interview_feedback";
+type EmailKind = "client_submission" | "application_received" | "client_decision" | "interview_feedback" | "job_creator_interview";
 type EmailRequest = {
   kind?: EmailKind;
   to?: string;
@@ -11,6 +11,8 @@ type EmailRequest = {
   reviewUrl?: string;
   decision?: string;
   outcome?: string;
+  reviewToken?: string;
+  submissionCandidateId?: string;
 };
 
 const FROM = "Isitha Global Recruitment <recruitment@isitha.global>";
@@ -29,6 +31,70 @@ async function authenticated(request: Request) {
   if (!supabaseUrl || !publishableKey) return false;
   const response = await fetch(`${supabaseUrl}/auth/v1/user`, { headers: { apikey: publishableKey, Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
   return response.ok;
+}
+
+type ReviewContext = {
+  candidateName: string;
+  companyName: string;
+  jobTitle: string;
+  recipient: string;
+};
+
+async function resolveInterviewRecipient(body: EmailRequest): Promise<ReviewContext | null> {
+  if (!body.reviewToken || !body.submissionCandidateId) return null;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!supabaseUrl || !publishableKey) return null;
+
+  const reviewResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_client_review`, {
+    method: "POST",
+    headers: { apikey: publishableKey, Authorization: `Bearer ${publishableKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ p_token: body.reviewToken }),
+    cache: "no-store",
+  });
+  if (!reviewResponse.ok) return null;
+  const review = await reviewResponse.json() as {
+    id?: string;
+    jobs?: { title?: string };
+    recruitment_clients?: { company_name?: string };
+    client_submission_candidates?: Array<{ id?: string; candidate_applications?: { candidate_name?: string } }>;
+  } | null;
+  const candidate = review?.client_submission_candidates?.find(item => item.id === body.submissionCandidateId);
+  if (!review?.id || !candidate) return null;
+
+  let recipient = INTERNAL_TO;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (serviceRoleKey) {
+    const submissionResponse = await fetch(`${supabaseUrl}/rest/v1/client_submissions?id=eq.${encodeURIComponent(review.id)}&select=job_id`, {
+      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+      cache: "no-store",
+    });
+    const submissions = submissionResponse.ok ? await submissionResponse.json() as Array<{ job_id?: string }> : [];
+    const jobId = submissions[0]?.job_id;
+    if (jobId) {
+      const jobResponse = await fetch(`${supabaseUrl}/rest/v1/jobs?id=eq.${encodeURIComponent(jobId)}&select=created_by`, {
+        headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+        cache: "no-store",
+      });
+      const jobs = jobResponse.ok ? await jobResponse.json() as Array<{ created_by?: string }> : [];
+      const creatorId = jobs[0]?.created_by;
+      if (creatorId) {
+        const userResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(creatorId)}`, {
+          headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+          cache: "no-store",
+        });
+        const creator = userResponse.ok ? await userResponse.json() as { email?: string } : null;
+        if (creator?.email) recipient = creator.email;
+      }
+    }
+  }
+
+  return {
+    candidateName: candidate.candidate_applications?.candidate_name || "Candidate",
+    companyName: review.recruitment_clients?.company_name || "Client",
+    jobTitle: review.jobs?.title || "Recruitment vacancy",
+    recipient,
+  };
 }
 
 function brandedClientEmail(name: string, job: string, url: string) {
@@ -84,6 +150,11 @@ export async function POST(request: Request) {
     const body = (await request.json()) as EmailRequest;
     if (!body.kind) return NextResponse.json({ error: "Email type is missing." }, { status: 400 });
 
+    const interviewContext = body.kind === "job_creator_interview" ? await resolveInterviewRecipient(body) : null;
+    if (body.kind === "job_creator_interview" && !interviewContext) {
+      return NextResponse.json({ error: "The interview request could not be verified." }, { status: 403 });
+    }
+
     const staffOnly = body.kind === "client_submission";
     if (staffOnly && !(await authenticated(request))) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
 
@@ -112,6 +183,13 @@ export async function POST(request: Request) {
       const outcome = escapeHtml((body.outcome || "submitted").replaceAll("_", " "));
       subject = `Interview feedback: ${body.candidateName || "candidate"}`;
       html = `<p>${company} has submitted interview feedback.</p><p><strong>Candidate:</strong> ${candidate}<br><strong>Role:</strong> ${job}<br><strong>Outcome:</strong> ${outcome}</p><p>Open the recruitment portal to review the feedback and next action.</p>`;
+    } else if (body.kind === "job_creator_interview" && interviewContext) {
+      to = interviewContext.recipient;
+      const interviewCandidate = escapeHtml(interviewContext.candidateName);
+      const interviewCompany = escapeHtml(interviewContext.companyName);
+      const interviewJob = escapeHtml(interviewContext.jobTitle);
+      subject = `Interview requested: ${interviewContext.candidateName}`;
+      html = `<p>${interviewCompany} would like to proceed to interview.</p><p><strong>Candidate:</strong> ${interviewCandidate}<br><strong>Role:</strong> ${interviewJob}</p><p>Log in to the Isitha Global recruitment portal to arrange the interview.</p>`;
     }
 
     const response = await fetch("https://api.resend.com/emails", {
