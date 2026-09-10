@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type RecruitmentEmailPayload = {
-  kind: "client_submission" | "application_received" | "client_decision" | "interview_feedback" | "job_creator_interview";
+  kind: "client_submission" | "application_received" | "client_decision" | "interview_feedback" | "job_creator_interview" | "interview_scheduled";
   to?: string;
   clientName?: string;
   companyName?: string;
@@ -12,6 +12,10 @@ export type RecruitmentEmailPayload = {
   outcome?: string;
   reviewToken?: string;
   submissionCandidateId?: string;
+  interviewWhen?: string;
+  interviewLocation?: string;
+  interviewMeetingLink?: string;
+  interviewNotes?: string;
 };
 
 export async function sendRecruitmentEmail(payload: RecruitmentEmailPayload, supabase?: SupabaseClient) {
