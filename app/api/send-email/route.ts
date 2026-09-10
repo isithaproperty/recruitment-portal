@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-type EmailKind = "client_submission" | "application_received" | "client_decision" | "interview_feedback" | "job_creator_interview";
+type EmailKind = "client_submission" | "application_received" | "client_decision" | "interview_feedback" | "job_creator_interview" | "interview_scheduled";
 type EmailRequest = {
   kind?: EmailKind;
   to?: string;
@@ -13,6 +13,10 @@ type EmailRequest = {
   outcome?: string;
   reviewToken?: string;
   submissionCandidateId?: string;
+  interviewWhen?: string;
+  interviewLocation?: string;
+  interviewMeetingLink?: string;
+  interviewNotes?: string;
 };
 
 const FROM = "Isitha Global Recruitment <recruitment@isitha.global>";
@@ -105,40 +109,38 @@ function brandedClientEmail(name: string, job: string, url: string) {
         <div style="font-size:24px;font-weight:800;letter-spacing:.04em;color:#0b2239;">ISITHA GLOBAL</div>
         <div style="margin-top:5px;font-size:13px;color:#667085;">Recruitment</div>
       </div>
-
       <div style="padding:36px 32px;">
         <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#344054;">Dear ${name},</p>
-
         <h1 style="margin:0 0 18px;font-size:28px;line-height:1.25;color:#0b2239;">Candidate CVs ready for review</h1>
-
-        <p style="margin:0 0 18px;font-size:16px;line-height:1.7;color:#475467;">
-          We have prepared a selection of candidate CVs for your <strong style="color:#0b2239;">${job}</strong> vacancy.
-        </p>
-
-        <p style="margin:0 0 24px;font-size:16px;line-height:1.7;color:#475467;">
-          Your private review page lets you view each candidate, select who you would like to interview and leave feedback for the Isitha Global recruitment team.
-        </p>
-
-        <div style="margin:28px 0;">
-          <a href="${url}" style="display:inline-block;background:#0b2239;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 24px;border-radius:8px;">Review candidate CVs</a>
-        </div>
-
-        <div style="margin:26px 0;padding:18px 20px;background:#fff9ec;border:1px solid #ead9ad;border-radius:10px;color:#475467;font-size:14px;line-height:1.6;">
-          <strong style="color:#0b2239;">Your private link remains active</strong><br>
-          You can return to the same page for interview selections, comments, interview feedback and any additional interview rounds.
-        </div>
-
-        <p style="margin:26px 0 0;font-size:16px;line-height:1.7;color:#475467;">
-          Kind regards,<br>
-          <strong style="color:#0b2239;">Isitha Global Recruitment</strong>
-        </p>
+        <p style="margin:0 0 18px;font-size:16px;line-height:1.7;color:#475467;">We have prepared a selection of candidate CVs for your <strong style="color:#0b2239;">${job}</strong> vacancy.</p>
+        <p style="margin:0 0 24px;font-size:16px;line-height:1.7;color:#475467;">Your private review page lets you view each candidate, select who you would like to interview and leave feedback for the Isitha Global recruitment team.</p>
+        <div style="margin:28px 0;"><a href="${url}" style="display:inline-block;background:#0b2239;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 24px;border-radius:8px;">Review candidate CVs</a></div>
+        <div style="margin:26px 0;padding:18px 20px;background:#fff9ec;border:1px solid #ead9ad;border-radius:10px;color:#475467;font-size:14px;line-height:1.6;"><strong style="color:#0b2239;">Your private link remains active</strong><br>You can return to the same page for interview selections, comments, interview feedback and any additional interview rounds.</div>
+        <p style="margin:26px 0 0;font-size:16px;line-height:1.7;color:#475467;">Kind regards,<br><strong style="color:#0b2239;">Isitha Global Recruitment</strong></p>
       </div>
+      <div style="padding:20px 32px;background:#f8f9fa;border-top:1px solid #dfe5eb;font-size:12px;line-height:1.6;color:#667085;"><strong style="color:#0b2239;">Isitha Global</strong><br>Global Professionals. Real Results.<br>recruitment.isitha.global</div>
+    </div>
+  </div>`;
+}
 
-      <div style="padding:20px 32px;background:#f8f9fa;border-top:1px solid #dfe5eb;font-size:12px;line-height:1.6;color:#667085;">
-        <strong style="color:#0b2239;">Isitha Global</strong><br>
-        Global Professionals. Real Results.<br>
-        recruitment.isitha.global
+function brandedInterviewScheduledEmail(name: string, candidate: string, job: string, when: string, location: string, meetingLink: string, notes: string, reviewUrl: string) {
+  const locationBlock = location ? `<p style="margin:8px 0 0;font-size:15px;line-height:1.6;color:#475467;"><strong style="color:#0b2239;">Location / platform:</strong> ${location}</p>` : "";
+  const meetingBlock = meetingLink ? `<p style="margin:8px 0 0;font-size:15px;line-height:1.6;color:#475467;"><strong style="color:#0b2239;">Meeting link:</strong> <a href="${meetingLink}" style="color:#0b2239;font-weight:700;">Join interview</a></p>` : "";
+  const notesBlock = notes ? `<div style="margin:22px 0;padding:16px 18px;background:#fff9ec;border:1px solid #ead9ad;border-radius:10px;color:#475467;font-size:14px;line-height:1.6;"><strong style="color:#0b2239;">Interview notes</strong><br>${notes}</div>` : "";
+  const reviewBlock = reviewUrl ? `<div style="margin:28px 0;"><a href="${reviewUrl}" style="display:inline-block;background:#0b2239;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 24px;border-radius:8px;">Open candidate review</a></div>` : "";
+  return `
+  <div style="margin:0;padding:32px 16px;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;color:#172536;">
+    <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #dfe5eb;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(11,34,57,0.06);">
+      <div style="padding:28px 32px;border-bottom:3px solid #c89a4b;"><div style="font-size:24px;font-weight:800;letter-spacing:.04em;color:#0b2239;">ISITHA GLOBAL</div><div style="margin-top:5px;font-size:13px;color:#667085;">Recruitment</div></div>
+      <div style="padding:36px 32px;">
+        <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#344054;">Dear ${name},</p>
+        <h1 style="margin:0 0 18px;font-size:28px;line-height:1.25;color:#0b2239;">Your interview has been scheduled</h1>
+        <p style="margin:0 0 22px;font-size:16px;line-height:1.7;color:#475467;">The interview for <strong style="color:#0b2239;">${candidate}</strong> for the <strong style="color:#0b2239;">${job}</strong> vacancy has now been arranged.</p>
+        <div style="padding:18px 20px;background:#f8f9fa;border:1px solid #dfe5eb;border-radius:10px;"><p style="margin:0;font-size:15px;line-height:1.6;color:#475467;"><strong style="color:#0b2239;">Date & time:</strong> ${when}</p>${locationBlock}${meetingBlock}</div>
+        ${notesBlock}${reviewBlock}
+        <p style="margin:26px 0 0;font-size:16px;line-height:1.7;color:#475467;">Kind regards,<br><strong style="color:#0b2239;">Isitha Global Recruitment</strong></p>
       </div>
+      <div style="padding:20px 32px;background:#f8f9fa;border-top:1px solid #dfe5eb;font-size:12px;line-height:1.6;color:#667085;"><strong style="color:#0b2239;">Isitha Global</strong><br>Global Professionals. Real Results.<br>recruitment.isitha.global</div>
     </div>
   </div>`;
 }
@@ -151,11 +153,9 @@ export async function POST(request: Request) {
     if (!body.kind) return NextResponse.json({ error: "Email type is missing." }, { status: 400 });
 
     const interviewContext = body.kind === "job_creator_interview" ? await resolveInterviewRecipient(body) : null;
-    if (body.kind === "job_creator_interview" && !interviewContext) {
-      return NextResponse.json({ error: "The interview request could not be verified." }, { status: 403 });
-    }
+    if (body.kind === "job_creator_interview" && !interviewContext) return NextResponse.json({ error: "The interview request could not be verified." }, { status: 403 });
 
-    const staffOnly = body.kind === "client_submission";
+    const staffOnly = body.kind === "client_submission" || body.kind === "interview_scheduled";
     if (staffOnly && !(await authenticated(request))) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
 
     const job = escapeHtml(body.jobTitle || "Recruitment vacancy");
@@ -169,9 +169,7 @@ export async function POST(request: Request) {
       if (!body.to || !body.reviewUrl) return NextResponse.json({ error: "Client email or review link is missing." }, { status: 400 });
       to = body.to;
       subject = `Candidate CVs ready for review – ${body.jobTitle || "your vacancy"}`;
-      const name = escapeHtml(body.clientName || "there");
-      const url = escapeHtml(body.reviewUrl);
-      html = brandedClientEmail(name, job, url);
+      html = brandedClientEmail(escapeHtml(body.clientName || "there"), job, escapeHtml(body.reviewUrl));
     } else if (body.kind === "application_received") {
       subject = `New application: ${body.jobTitle || "vacancy"}`;
       html = `<p>A new candidate application has been received.</p><p><strong>Candidate:</strong> ${candidate}<br><strong>Role:</strong> ${job}</p><p>Log in to the Isitha Global recruitment portal to review the application and CV.</p>`;
@@ -185,11 +183,22 @@ export async function POST(request: Request) {
       html = `<p>${company} has submitted interview feedback.</p><p><strong>Candidate:</strong> ${candidate}<br><strong>Role:</strong> ${job}<br><strong>Outcome:</strong> ${outcome}</p><p>Open the recruitment portal to review the feedback and next action.</p>`;
     } else if (body.kind === "job_creator_interview" && interviewContext) {
       to = interviewContext.recipient;
-      const interviewCandidate = escapeHtml(interviewContext.candidateName);
-      const interviewCompany = escapeHtml(interviewContext.companyName);
-      const interviewJob = escapeHtml(interviewContext.jobTitle);
       subject = `Interview requested: ${interviewContext.candidateName}`;
-      html = `<p>${interviewCompany} would like to proceed to interview.</p><p><strong>Candidate:</strong> ${interviewCandidate}<br><strong>Role:</strong> ${interviewJob}</p><p>Log in to the Isitha Global recruitment portal to arrange the interview.</p>`;
+      html = `<p>${escapeHtml(interviewContext.companyName)} would like to proceed to interview.</p><p><strong>Candidate:</strong> ${escapeHtml(interviewContext.candidateName)}<br><strong>Role:</strong> ${escapeHtml(interviewContext.jobTitle)}</p><p>Log in to the Isitha Global recruitment portal to arrange the interview.</p>`;
+    } else if (body.kind === "interview_scheduled") {
+      if (!body.to || !body.interviewWhen) return NextResponse.json({ error: "Client email or interview date is missing." }, { status: 400 });
+      to = body.to;
+      subject = `Interview scheduled: ${body.candidateName || "candidate"} – ${body.jobTitle || "vacancy"}`;
+      html = brandedInterviewScheduledEmail(
+        escapeHtml(body.clientName || "there"),
+        candidate,
+        job,
+        escapeHtml(body.interviewWhen),
+        escapeHtml(body.interviewLocation || ""),
+        escapeHtml(body.interviewMeetingLink || ""),
+        escapeHtml(body.interviewNotes || ""),
+        escapeHtml(body.reviewUrl || "")
+      );
     }
 
     const response = await fetch("https://api.resend.com/emails", {
