@@ -13,8 +13,8 @@ type EmailRequest = {
   outcome?: string;
 };
 
-const FROM = "Isitha Global Recruitment <recruitment@isithaproperty.co.za>";
-const INTERNAL_TO = process.env.RECRUITMENT_NOTIFICATION_EMAIL || "recruitment@isithaproperty.co.za";
+const FROM = "Isitha Global Recruitment <recruitment@isitha.global>";
+const INTERNAL_TO = process.env.RECRUITMENT_NOTIFICATION_EMAIL || "recruitment@isitha.global";
 
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char] || char));
@@ -29,6 +29,52 @@ async function authenticated(request: Request) {
   if (!supabaseUrl || !publishableKey) return false;
   const response = await fetch(`${supabaseUrl}/auth/v1/user`, { headers: { apikey: publishableKey, Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
   return response.ok;
+}
+
+function brandedClientEmail(name: string, job: string, url: string) {
+  return `
+  <div style="margin:0;padding:32px 16px;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;color:#172536;">
+    <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #dfe5eb;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(11,34,57,0.06);">
+      <div style="padding:28px 32px;border-bottom:3px solid #c89a4b;">
+        <div style="font-size:24px;font-weight:800;letter-spacing:.04em;color:#0b2239;">ISITHA GLOBAL</div>
+        <div style="margin-top:5px;font-size:13px;color:#667085;">Recruitment</div>
+      </div>
+
+      <div style="padding:36px 32px;">
+        <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#344054;">Dear ${name},</p>
+
+        <h1 style="margin:0 0 18px;font-size:28px;line-height:1.25;color:#0b2239;">Candidate CVs ready for review</h1>
+
+        <p style="margin:0 0 18px;font-size:16px;line-height:1.7;color:#475467;">
+          We have prepared a selection of candidate CVs for your <strong style="color:#0b2239;">${job}</strong> vacancy.
+        </p>
+
+        <p style="margin:0 0 24px;font-size:16px;line-height:1.7;color:#475467;">
+          Your private review page lets you view each candidate, select who you would like to interview and leave feedback for the Isitha Global recruitment team.
+        </p>
+
+        <div style="margin:28px 0;">
+          <a href="${url}" style="display:inline-block;background:#0b2239;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 24px;border-radius:8px;">Review candidate CVs</a>
+        </div>
+
+        <div style="margin:26px 0;padding:18px 20px;background:#fff9ec;border:1px solid #ead9ad;border-radius:10px;color:#475467;font-size:14px;line-height:1.6;">
+          <strong style="color:#0b2239;">Your private link remains active</strong><br>
+          You can return to the same page for interview selections, comments, interview feedback and any additional interview rounds.
+        </div>
+
+        <p style="margin:26px 0 0;font-size:16px;line-height:1.7;color:#475467;">
+          Kind regards,<br>
+          <strong style="color:#0b2239;">Isitha Global Recruitment</strong>
+        </p>
+      </div>
+
+      <div style="padding:20px 32px;background:#f8f9fa;border-top:1px solid #dfe5eb;font-size:12px;line-height:1.6;color:#667085;">
+        <strong style="color:#0b2239;">Isitha Global</strong><br>
+        Global Professionals. Real Results.<br>
+        recruitment.isitha.global
+      </div>
+    </div>
+  </div>`;
 }
 
 export async function POST(request: Request) {
@@ -51,10 +97,10 @@ export async function POST(request: Request) {
     if (body.kind === "client_submission") {
       if (!body.to || !body.reviewUrl) return NextResponse.json({ error: "Client email or review link is missing." }, { status: 400 });
       to = body.to;
-      subject = `Candidate CVs for ${body.jobTitle || "your vacancy"}`;
+      subject = `Candidate CVs ready for review – ${body.jobTitle || "your vacancy"}`;
       const name = escapeHtml(body.clientName || "there");
       const url = escapeHtml(body.reviewUrl);
-      html = `<p>Dear ${name},</p><p>Isitha Global has prepared candidate CVs for <strong>${job}</strong>.</p><p><a href="${url}">Open your private candidate review page</a></p><p>You can review each CV, choose who you would like to interview and leave comments. The same link remains available for interview feedback and additional rounds.</p><p>Kind regards,<br><strong>Isitha Global Recruitment</strong></p>`;
+      html = brandedClientEmail(name, job, url);
     } else if (body.kind === "application_received") {
       subject = `New application: ${body.jobTitle || "vacancy"}`;
       html = `<p>A new candidate application has been received.</p><p><strong>Candidate:</strong> ${candidate}<br><strong>Role:</strong> ${job}</p><p>Log in to the Isitha Global recruitment portal to review the application and CV.</p>`;
