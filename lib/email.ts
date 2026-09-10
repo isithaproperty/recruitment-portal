@@ -24,7 +24,12 @@ export async function sendRecruitmentEmail(payload: RecruitmentEmailPayload, sup
     const { data } = await supabase.auth.getSession();
     if (data.session?.access_token) headers.Authorization = `Bearer ${data.session.access_token}`;
   }
-  const response = await fetch("/api/send-email", { method: "POST", headers, body: JSON.stringify(payload) });
+
+  const endpoint = payload.kind === "interview_feedback"
+    ? "/api/send-interview-feedback-email"
+    : "/api/send-email";
+
+  const response = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(payload) });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error((result as { error?: string }).error || "Email could not be sent.");
   return result as { ok: true; id?: string | null };
