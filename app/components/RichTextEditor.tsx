@@ -5,31 +5,65 @@ import { useEffect, useRef } from "react";
 type Props={value:string;onChange:(value:string)=>void;placeholder?:string;minHeight?:number};
 
 const allowedTags=new Set(["P","BR","STRONG","B","EM","I","UL","OL","LI","H2","H3"]);
+const dropTags=new Set(["STYLE","SCRIPT","META","LINK","TITLE","HEAD","XML"]);
+
+function stripOfficeNoiseFromText(text:string){
+  return text
+    .replace(/<!--[^]*?-->/g,"")
+    .replace(/\/\*\s*Font Definitions\s*\*\/[^]*?(?=(?:\n\s*\n)|$)/gi,"")
+    .replace(/@font-face\s*\{[^}]*\}/gi,"")
+    .replace(/(?:p|div|span)\.[A-Za-z0-9_-]+\s*\{[^}]*\}/gi,"")
+    .trim();
+}
 
 function sanitizeHtml(html:string){
   if(typeof window==="undefined")return html;
   const doc=new DOMParser().parseFromString(`<div>${html}</div>`,"text/html");
   const root=doc.body.firstElementChild as HTMLElement|null;
   if(!root)return "";
+
   const walk=(node:Node)=>{
     [...node.childNodes].forEach(child=>{
+      if(child.nodeType===Node.COMMENT_NODE){
+        child.remove();
+        return;
+      }
+
+      if(child.nodeType===Node.TEXT_NODE){
+        const cleaned=stripOfficeNoiseFromText(child.textContent||"");
+        if(cleaned!==child.textContent)child.textContent=cleaned;
+        return;
+      }
+
       if(child.nodeType===Node.ELEMENT_NODE){
         const el=child as HTMLElement;
-        if(!allowedTags.has(el.tagName)){
-          const replacement=doc.createElement(el.tagName==="DIV"?"p":"span");
-          while(el.firstChild)replacement.appendChild(el.firstChild);
-          el.replaceWith(replacement);
-          if(replacement.tagName==="SPAN")replacement.replaceWith(...replacement.childNodes);
-          else walk(replacement);
+
+        if(dropTags.has(el.tagName)){
+          el.remove();
           return;
         }
+
+        if(!allowedTags.has(el.tagName)){
+          walk(el);
+          el.replaceWith(...el.childNodes);
+          return;
+        }
+
         [...el.attributes].forEach(a=>el.removeAttribute(a.name));
         walk(el);
       }
     });
   };
+
   walk(root);
   return root.innerHTML;
+}
+
+function plainTextToHtml(text:string){
+  const cleaned=stripOfficeNoiseFromText(text);
+  const div=document.createElement("div");
+  div.textContent=cleaned;
+  return div.innerHTML.replace(/\r?\n/g,"<br>");
 }
 
 export function RichTextEditor({value,onChange,placeholder="Paste or type the job description here...",minHeight=260}:Props){
@@ -62,8 +96,13 @@ export function RichTextEditor({value,onChange,placeholder="Paste or type the jo
         e.preventDefault();
         const html=e.clipboardData.getData("text/html");
         const text=e.clipboardData.getData("text/plain");
-        document.execCommand("insertHTML",false,html?sanitizeHtml(html):text.replace(/\n/g,"<br>"));
-        if(ref.current)onChange(sanitizeHtml(ref.current.innerHTML));
+        const cleaned=html?sanitizeHtml(html):plainTextToHtml(text);
+        document.execCommand("insertHTML",false,cleaned);
+        if(ref.current){
+          const normalized=sanitizeHtml(ref.current.innerHTML);
+          ref.current.innerHTML=normalized;
+          onChange(normalized);
+        }
       }}
       style={{minHeight}}
       className="px-4 py-3 text-slate-900 outline-none empty:before:pointer-events-none empty:before:text-slate-400 empty:before:content-[attr(data-placeholder)] [&_h2]:mt-5 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mt-4 [&_h3]:text-lg [&_h3]:font-bold [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-2 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6"
