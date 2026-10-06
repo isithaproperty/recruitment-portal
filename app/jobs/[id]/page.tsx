@@ -37,6 +37,7 @@ export default function JobPage() {
   const supabase = useMemo(() => createClient(), []);
   const [job, setJob] = useState<Job | null>(null);
   const [apps, setApps] = useState<Application[]>([]);
+  const [cvFilter, setCvFilter] = useState<"all" | "reformatted" | "not_reformatted">("all");
   const [loading, setLoading] = useState(true);
   const [scoring, setScoring] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
@@ -274,6 +275,15 @@ export default function JobPage() {
     );
   const applyPath = job.public_slug ? `/apply/${job.public_slug}` : "";
   const applyUrl = applyPath && origin ? `${origin}${applyPath}` : applyPath;
+  const reformattedCount = apps.filter((a) => a.status === "client_cv_ready").length;
+  const visibleApps = apps.filter((a) =>
+    cvFilter === "all" || (cvFilter === "reformatted" ? a.status === "client_cv_ready" : a.status !== "client_cv_ready"),
+  );
+  const cvTabs = [
+    { id: "all", label: "All CVs", count: apps.length },
+    { id: "reformatted", label: "Reformatted", count: reformattedCount },
+    { id: "not_reformatted", label: "Not reformatted", count: apps.length - reformattedCount },
+  ] as const;
   const unscored = apps.filter((a) => a.match_score == null).length;
   return (
     <main className="min-h-screen bg-slate-100">
@@ -382,18 +392,35 @@ export default function JobPage() {
                   onClick={() => void scoreAll()}
                   className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 >
-                  {scoring ? "Scoring..." : `Score ${unscored} unscored`}
+                  {scoring ? "Scoring..." : `Score all ${unscored} unscored`}
                 </button>
               )}
             </div>
           </div>
-          <div className="mt-5 space-y-4">
-            {apps.length === 0 ? (
+          <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Filter CVs by reformatting status">
+            {cvTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                aria-pressed={cvFilter === tab.id}
+                aria-controls="job-cv-list"
+                onClick={() => setCvFilter(tab.id)}
+                className={`rounded-lg border px-4 py-2.5 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-600 ${cvFilter === tab.id ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:border-amber-600"}`}
+              >
+                {tab.label} ({tab.count})
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-sm text-slate-500" aria-live="polite">
+            Showing {visibleApps.length} of {apps.length} CVs. Reformatted CVs still need review before sending to clients.
+          </p>
+          <div id="job-cv-list" className="mt-5 space-y-4">
+            {visibleApps.length === 0 ? (
               <p className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center text-slate-500">
-                No applications yet.
+                {apps.length === 0 ? "No applications yet." : cvFilter === "reformatted" ? "No reformatted CVs for this job yet." : "All CVs for this job have been reformatted."}
               </p>
             ) : (
-              apps.map((a) => (
+              visibleApps.map((a) => (
                 <article
                   key={a.id}
                   className="rounded-lg border border-slate-200 p-5"
@@ -401,6 +428,9 @@ export default function JobPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <h3 className="font-bold">{a.candidate_name}</h3>
+                      <span className={`mt-1 inline-block rounded-full px-2.5 py-1 text-sm font-semibold ${a.status === "client_cv_ready" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
+                        {a.status === "client_cv_ready" ? "Reformatted" : "Not reformatted"}
+                      </span>
                       <p className="text-sm text-slate-500">
                         {a.email} · {a.location || "Location not supplied"}
                       </p>
