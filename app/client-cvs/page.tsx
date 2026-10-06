@@ -98,6 +98,8 @@ function PreviewSection({
 export default function ClientCvPage() {
   const supabase = useMemo(() => createClient(), []);
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [cvFilter, setCvFilter] = useState<"all" | "reformatted" | "not_reformatted">("all");
   const [selected, setSelected] = useState<QueueItem | null>(null);
   const [cv, setCv] = useState<ClientCv | null>(null);
   const [working, setWorking] = useState(false);
@@ -352,6 +354,20 @@ export default function ClientCvPage() {
       setTimeout(print, 1800);
     } else setTimeout(print, 250);
   }
+  const roles = Array.from(new Map(queue.map((a) => [a.job_id, a.jobs?.title || "Unknown role"])).entries())
+    .map(([id, title]) => ({ id, title }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+  const roleQueue = queue.filter((a) => roleFilter === "all" || a.job_id === roleFilter);
+  const reformattedCount = roleQueue.filter((a) => a.status === "client_cv_ready").length;
+  const visibleQueue = roleQueue.filter((a) => cvFilter === "all" ||
+    (cvFilter === "reformatted" ? a.status === "client_cv_ready" : a.status !== "client_cv_ready"));
+  const groups = roles.map((role) => ({ ...role, candidates: visibleQueue.filter((a) => a.job_id === role.id) }))
+    .filter((role) => role.candidates.length > 0);
+  const cvTabs = [
+    { id: "all", label: "All CVs", count: roleQueue.length },
+    { id: "reformatted", label: "Reformatted", count: reformattedCount },
+    { id: "not_reformatted", label: "Not reformatted", count: roleQueue.length - reformattedCount },
+  ] as const;
   const fields: [keyof ClientCv, string][] = [
     ["recruiter_summary", "Recruiter summary"],
     ["professional_profile", "Professional profile"],
@@ -384,32 +400,48 @@ export default function ClientCvPage() {
       </header>
       <div className="mx-auto grid max-w-7xl gap-6 px-6 py-8 lg:grid-cols-[320px_1fr]">
         <aside className="h-fit rounded-xl bg-white p-5 shadow-sm">
-          <h2 className="font-bold">Ready for client CV</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            {queue.length} candidate{queue.length === 1 ? "" : "s"}
-          </p>
-          <div className="mt-4 space-y-2">
-            {queue.length === 0 ? (
+          <h2 className="font-bold">CVs by job role</h2>
+          <label htmlFor="cv-role-filter" className="mt-4 block text-sm font-semibold">Job role</label>
+          <select id="cv-role-filter" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}
+            className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+            <option value="all">All roles ({queue.length})</option>
+            {roles.map((role) => <option key={role.id} value={role.id}>
+              {role.title} ({queue.filter((a) => a.job_id === role.id).length})
+            </option>)}
+          </select>
+          <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filter CVs by reformatting status">
+            {cvTabs.map((tab) => <button key={tab.id} type="button" aria-pressed={cvFilter === tab.id}
+              aria-controls="client-cv-queue" onClick={() => setCvFilter(tab.id)}
+              className={`rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-amber-600 ${cvFilter === tab.id ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700"}`}>
+              {tab.label} ({tab.count})
+            </button>)}
+          </div>
+          <p className="mt-3 text-sm text-slate-500" aria-live="polite">Showing {visibleQueue.length} of {roleQueue.length} CVs</p>
+          <div id="client-cv-queue" className="mt-4 space-y-3">
+            {visibleQueue.length === 0 ? (
               <p className="rounded border-2 border-dashed p-5 text-sm text-slate-500">
-                No candidates have been moved forward yet.
+                {queue.length === 0 ? "No candidates have been moved forward yet." : "No CVs match this role and status."}
               </p>
-            ) : (
-              queue.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => void selectItem(a)}
-                  className={`w-full rounded-lg border p-3 text-left ${selected?.id === a.id ? "border-amber-500 bg-amber-50" : "border-slate-200"}`}
-                >
-                  <div className="font-semibold">{a.candidate_name}</div>
-                  <div className="text-xs text-slate-500">
-                    {a.jobs?.title || "Job"} ·{" "}
-                    {a.status === "client_cv_ready"
-                      ? "Draft ready"
-                      : "Needs reformatting"}
-                  </div>
-                </button>
-              ))
-            )}
+            ) : groups.map((group) => (
+              <details key={`${group.id}-${roleFilter}-${cvFilter}`} open={roleFilter !== "all" || selected?.job_id === group.id}
+                className="rounded-lg border border-slate-200">
+                <summary className="cursor-pointer rounded-lg bg-slate-50 p-3 text-sm font-bold text-slate-900">
+                  {group.title} ({group.candidates.length})
+                </summary>
+                <div className="space-y-2 p-2">
+                  {group.candidates.map((a) => (
+                    <button key={a.id} type="button" onClick={() => void selectItem(a)}
+                      aria-pressed={selected?.id === a.id}
+                      className={`w-full rounded-lg border p-3 text-left ${selected?.id === a.id ? "border-amber-500 bg-amber-50" : "border-slate-200"}`}>
+                      <div className="font-semibold">{a.candidate_name}</div>
+                      <div className="mt-1 text-sm text-slate-500">
+                        {a.status === "client_cv_ready" ? "Reformatted · draft ready for review" : "Not reformatted"}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </details>
+            ))}
           </div>
         </aside>
         <section>
