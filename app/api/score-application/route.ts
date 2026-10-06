@@ -101,7 +101,33 @@ export async function POST(request: Request) {
           ],
         }),
       });
-      if (!aiResponse.ok) return NextResponse.json({ error: "AI scoring could not be completed right now." }, { status: 502 });
+      if (!aiResponse.ok) {
+        const failure = await aiResponse.json().catch(() => null) as {
+          error?: { code?: unknown; type?: unknown; param?: unknown };
+        } | null;
+        // Log identifiers only: provider messages can contain CV text or filenames.
+        const safeIdentifier = (value: unknown) =>
+          typeof value === "string" && /^[a-zA-Z0-9_.\[\]-]{1,120}$/.test(value) ? value : null;
+        const code = safeIdentifier(failure?.error?.code);
+        const param = safeIdentifier(failure?.error?.param);
+        const requestId = aiResponse.headers.get("x-request-id");
+        console.error("AI scoring provider rejection", {
+          status: aiResponse.status,
+          code,
+          type: safeIdentifier(failure?.error?.type),
+          param,
+          requestId: safeIdentifier(requestId),
+          model: "gpt-5.6-luna",
+        });
+        const diagnostic = [code, param ? `field: ${param}` : null].filter(Boolean).join("; ");
+        return NextResponse.json({
+          error: `AI scoring was rejected by the AI service${diagnostic ? ` (${diagnostic})` : ""}. Please contact the portal administrator.`,
+          provider_status: aiResponse.status,
+          provider_code: code,
+          provider_param: param,
+          provider_request_id: safeIdentifier(requestId),
+        }, { status: 502 });
+      }
       const payload = await aiResponse.json();
       const outputText = extractOutputText(payload).trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
       const result = JSON.parse(outputText) as { match_score?: number; strengths?: string; weaknesses?: string; rationale?: string };
