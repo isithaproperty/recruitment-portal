@@ -17,8 +17,6 @@ export default function EditJobPage() {
   const [location, setLocation] = useState("");
   const [minExperience, setMinExperience] = useState(0);
   const [jobDescription, setJobDescription] = useState("");
-  const [mandatoryRequirements, setMandatoryRequirements] = useState("");
-  const [preferredRequirements, setPreferredRequirements] = useState("");
   const [closingDate, setClosingDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -47,8 +45,6 @@ export default function EditJobPage() {
           return sanitizeRichTextForSave(/<\/?[a-z][^>]*>/i.test(value) ? value : text.innerHTML.replace(/\r?\n/g, "<br>"));
         }
         setJobDescription(richText(data.job_description));
-        setMandatoryRequirements(richText(data.mandatory_requirements));
-        setPreferredRequirements(richText(data.preferred_requirements));
       } catch (error) {
         if (active) setMessage(error instanceof Error ? error.message : "The job could not be loaded.");
       } finally {
@@ -76,8 +72,6 @@ export default function EditJobPage() {
         .update({
           title: jobTitle.trim(), client_company: clientName.trim(), location: location.trim(),
           minimum_experience: minExperience || null, job_description: clean,
-          mandatory_requirements: sanitizeRichTextForSave(mandatoryRequirements).trim(),
-          preferred_requirements: sanitizeRichTextForSave(preferredRequirements).trim(),
           closing_date: closingDate || null,
         }).eq("id", job.id)
         .select("id,job_description").single();
@@ -95,7 +89,7 @@ export default function EditJobPage() {
   const helper = "mt-1 text-xs font-normal text-slate-500";
 
   return <main className="min-h-screen bg-slate-100">
-    <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5"><div><h1 className="text-2xl font-bold text-slate-900">Edit job</h1><p className="text-sm text-slate-500">Update the job details, skills and matching requirements.</p></div><Link href="/" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Back to dashboard</Link></div></header>
+    <header className="border-b border-slate-200 bg-white"><div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-5"><div><h1 className="text-2xl font-bold text-slate-900">Edit job</h1><p className="text-sm text-slate-500">Update the job details, skills and job scope.</p></div><Link href="/" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Back to dashboard</Link></div></header>
     <div className="mx-auto max-w-5xl px-6 py-8">{loading ? <p>Loading job...</p> : job && <form onSubmit={save} className="space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
       <fieldset disabled={saving} className="contents"><div className="grid gap-6 md:grid-cols-2">
         <label className="text-sm font-semibold text-slate-700">Job title<input required value={jobTitle} onChange={e=>setJobTitle(e.target.value)} className={`${input} mt-2`} placeholder="Senior Quantity Surveyor"/></label>
@@ -107,16 +101,6 @@ export default function EditJobPage() {
       <div className="block text-sm font-semibold text-slate-700">Job description
         <p className={helper}>Use bold, headings, bullets or numbered lists. You can also paste formatted text from Word or email.</p>
         <RichTextEditor value={jobDescription} onChange={setJobDescription}/>
-      </div>
-
-      <div className="block text-sm font-semibold text-slate-700">Mandatory requirements
-        <p className={helper}>Format essential requirements with bold text, headings, bullets or numbered lists.</p>
-        <RichTextEditor value={mandatoryRequirements} onChange={setMandatoryRequirements}/>
-      </div>
-
-      <div className="block text-sm font-semibold text-slate-700">Preferred requirements
-        <p className={helper}>Use the same formatting for desirable or preferred requirements.</p>
-        <RichTextEditor value={preferredRequirements} onChange={setPreferredRequirements}/>
       </div>
 
       <label className="block text-sm font-semibold text-slate-700">Closing date<input type="date" value={closingDate} onChange={e=>setClosingDate(e.target.value)} className={`${input} mt-2 md:w-72`}/></label>
