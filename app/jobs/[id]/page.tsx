@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { parseCvContent } from "@/lib/client-cv-content";
 
 type Job = {
   id: string;
@@ -104,9 +105,7 @@ export default function JobPage() {
             });
             const result = await response.json();
             if (!response.ok) throw new Error(result.error || "CV reformatting failed.");
-            const fields = ["professional_profile", "skills", "qualifications", "experience", "projects", "additional_information"] as const;
-            if (fields.some(field => typeof result[field] !== "string")) throw new Error("The reformatted CV was incomplete.");
-            const content = Object.fromEntries(fields.map(field => [field, result[field]]));
+            const content = parseCvContent(result);
             const { error: saveError } = await supabase.from("client_cvs").insert({
               ...content, application_id: application.id, candidate_name: application.candidate_name,
               recruiter_summary: "", source_cv_path: application.cv_path, status: "draft",

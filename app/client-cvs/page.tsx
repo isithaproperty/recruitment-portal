@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ISITHA_LOGO_DATA_URI } from "@/lib/brand";
+import { appendApprovedComments, parseCvContent } from "@/lib/client-cv-content";
 
 type QueueItem = {
   id: string;
@@ -18,6 +19,7 @@ type ClientCv = {
   application_id: string;
   candidate_name: string;
   recruiter_summary: string;
+  ai_comments: string;
   professional_profile: string;
   skills: string;
   qualifications: string;
@@ -33,6 +35,7 @@ const empty = (a: QueueItem): ClientCv => ({
   application_id: a.id,
   candidate_name: a.candidate_name,
   recruiter_summary: "",
+  ai_comments: "",
   professional_profile: "",
   skills: "",
   qualifications: "",
@@ -58,7 +61,7 @@ function section(title: string, value: string, kind = "") {
     : "";
 }
 function documentHtml(cv: ClientCv) {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(cv.candidate_name)} - Isitha Global CV</title><style>@page{size:A4;margin:13mm 15mm 16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1e293b;margin:0;line-height:1.5;font-size:10pt}.letterhead{display:flex;justify-content:space-between;align-items:center;padding:0 0 9px}.brand-logo{width:245px;max-width:46%;height:auto;display:block}.contact{text-align:right;font-size:7.7pt;line-height:1.5;color:#64748b}.rule{height:5px;background:#172033;border-right:52px solid #b99648;margin-bottom:20px}.candidate{padding:0 0 14px;border-bottom:1px solid #d9dee7}.candidate h1{font-size:27pt;line-height:1.05;margin:0;color:#172033;letter-spacing:-.02em}.candidate p{margin:7px 0 0;text-transform:uppercase;letter-spacing:.16em;font-size:8pt;color:#a88436;font-weight:700}.privacy{margin-top:7px;font-size:7.7pt;color:#94a3b8}.cv-section{break-inside:avoid;page-break-inside:avoid;margin-top:17px}.cv-section h2{font-size:9.3pt;text-transform:uppercase;letter-spacing:.12em;color:#172033;border-bottom:1.5px solid #b99648;margin:0 0 7px;padding-bottom:4px}.section-copy{white-space:normal;color:#334155}.summary{background:#fbf7ed;border-left:4px solid #b99648;padding:12px 14px;margin-top:17px}.summary h2{border:0;margin-bottom:5px;padding:0}.summary .section-copy{color:#263244}.skills .section-copy{line-height:1.55}.footer{margin-top:24px;padding-top:8px;border-top:1px solid #d9dee7;font-size:7.2pt;color:#94a3b8;text-align:center}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cv-section{break-inside:avoid;page-break-inside:avoid}}</style></head><body><div class="letterhead"><img class="brand-logo" src="${LETTERHEAD_IMAGE}" alt="Isitha Global"><div class="contact">31 Heugh Road, Walmer<br>Eastern Cape, 6065<br>+44 203 834 9241<br>enquiries@isitha.global<br>www.isitha.global</div></div><div class="rule"></div><div class="candidate"><h1>${escapeHtml(cv.candidate_name)}</h1><p>Client Candidate Profile</p><div class="privacy">Prepared by Isitha Global · Personal contact details removed for client presentation.</div></div>${section("Recruiter Summary", cv.recruiter_summary, "summary")}${section("Professional Profile", cv.professional_profile)}${section("Key Skills", cv.skills, "skills")}${section("Qualifications", cv.qualifications)}${section("Professional Experience", cv.experience)}${section("Selected Projects", cv.projects)}${section("Additional Information", cv.additional_information)}<div class="footer">Isitha Global · Global Professionals. Real Results · www.isitha.global</div></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(cv.candidate_name)} - Isitha Global CV</title><style>@page{size:A4;margin:13mm 15mm 16mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1e293b;margin:0;line-height:1.5;font-size:10pt}.letterhead{display:flex;justify-content:space-between;align-items:center;padding:0 0 9px}.brand-logo{width:245px;max-width:46%;height:auto;display:block}.contact{text-align:right;font-size:7.7pt;line-height:1.5;color:#64748b}.rule{height:5px;background:#172033;border-right:52px solid #b99648;margin-bottom:20px}.candidate{padding:0 0 14px;border-bottom:1px solid #d9dee7}.candidate h1{font-size:27pt;line-height:1.05;margin:0;color:#172033;letter-spacing:-.02em}.candidate p{margin:7px 0 0;text-transform:uppercase;letter-spacing:.16em;font-size:8pt;color:#a88436;font-weight:700}.privacy{margin-top:7px;font-size:7.7pt;color:#94a3b8}.cv-section{break-inside:avoid;page-break-inside:avoid;margin-top:17px}.cv-section h2{font-size:9.3pt;text-transform:uppercase;letter-spacing:.12em;color:#172033;border-bottom:1.5px solid #b99648;margin:0 0 7px;padding-bottom:4px}.section-copy{white-space:normal;color:#334155}.summary{background:#fbf7ed;border-left:4px solid #b99648;padding:12px 14px;margin-top:17px}.summary h2{border:0;margin-bottom:5px;padding:0}.summary .section-copy{color:#263244}.skills .section-copy{line-height:1.55}.footer{margin-top:24px;padding-top:8px;border-top:1px solid #d9dee7;font-size:7.2pt;color:#94a3b8;text-align:center}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.cv-section{break-inside:avoid;page-break-inside:avoid}}</style></head><body><div class="letterhead"><img class="brand-logo" src="${LETTERHEAD_IMAGE}" alt="Isitha Global"><div class="contact">31 Heugh Road, Walmer<br>Eastern Cape, 6065<br>+44 203 834 9241<br>enquiries@isitha.global<br>www.isitha.global</div></div><div class="rule"></div><div class="candidate"><h1>${escapeHtml(cv.candidate_name)}</h1><p>Client Candidate Profile</p><div class="privacy">Prepared by Isitha Global · Personal contact details removed for client presentation.</div></div>${section("Recruiter Comments", cv.recruiter_summary, "summary")}${section("Professional Profile", cv.professional_profile)}${section("Key Skills", cv.skills, "skills")}${section("Qualifications", cv.qualifications)}${section("Professional Experience", cv.experience)}${section("Selected Projects", cv.projects)}${section("Additional Information", cv.additional_information)}<div class="footer">Isitha Global · Global Professionals. Real Results · www.isitha.global</div></body></html>`;
 }
 
 function PreviewSection({
@@ -126,6 +129,7 @@ export default function ClientCvPage() {
     setQueue((data || []) as unknown as QueueItem[]);
   }
   async function selectItem(a: QueueItem) {
+    if (working) return;
     setSelected(a);
     setMessage("");
     const { data } = await supabase
@@ -136,7 +140,7 @@ export default function ClientCvPage() {
     setCv((data as ClientCv | null) || empty(a));
   }
   async function generate() {
-    if (!selected || !cv) return;
+    if (!selected || !cv || working) return;
     setWorking(true);
     setMessage("");
     try {
@@ -168,8 +172,7 @@ export default function ClientCvPage() {
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.error || "CV reformatting failed");
-      const next = { ...cv, ...result, candidate_name: cv.candidate_name };
-      setCv(next);
+      const next = { ...cv, ...parseCvContent(result), candidate_name: cv.candidate_name, recruiter_summary: cv.recruiter_summary || "" };
       const { data: saved, error: saveError } = await supabase
         .from("client_cvs")
         .upsert(
@@ -198,22 +201,27 @@ export default function ClientCvPage() {
       setWorking(false);
     }
   }
-  async function save() {
-    if (!cv) return;
-    const { data, error } = await supabase
-      .from("client_cvs")
-      .upsert(
-        { ...cv, updated_at: new Date().toISOString() },
-        { onConflict: "application_id" },
-      )
-      .select()
-      .single();
-    if (error) {
-      setMessage("Changes could not be saved.");
-      return;
+  async function save(next = cv, successMessage = "Changes saved.") {
+    if (!next || working) return;
+    setWorking(true);
+    setMessage("");
+    try {
+      const { data, error } = await supabase.from("client_cvs")
+        .upsert({ ...next, updated_at: new Date().toISOString() }, { onConflict: "application_id" })
+        .select().single();
+      if (error) throw error;
+      setCv(data as ClientCv);
+      setMessage(successMessage);
+    } catch {
+      setMessage("Changes could not be saved. Please try again.");
+    } finally {
+      setWorking(false);
     }
-    setCv(data as ClientCv);
-    setMessage("Changes saved.");
+  }
+  async function addAiComments() {
+    if (!cv || !cv.ai_comments?.trim()) return;
+    const recruiter_summary = appendApprovedComments(cv.recruiter_summary, cv.ai_comments);
+    await save({ ...cv, recruiter_summary }, "Comments added to the client CV. They are now included in exports and the client preview.");
   }
   async function openOriginalCv() {
     if (!selected) return;
@@ -428,7 +436,7 @@ export default function ClientCvPage() {
                 </summary>
                 <div className="space-y-2 p-2">
                   {group.candidates.map((a) => (
-                    <button key={a.id} type="button" onClick={() => void selectItem(a)}
+                    <button key={a.id} type="button" disabled={working} onClick={() => void selectItem(a)}
                       aria-pressed={selected?.id === a.id}
                       className={`w-full rounded-lg border p-3 text-left ${selected?.id === a.id ? "border-amber-500 bg-amber-50" : "border-slate-200"}`}>
                       <div className="font-semibold">{a.candidate_name}</div>
@@ -493,6 +501,7 @@ export default function ClientCvPage() {
                       </button>
                       <button
                         onClick={() => void save()}
+                        disabled={working}
                         className="rounded border px-4 py-2 text-sm font-semibold"
                       >
                         Save
@@ -534,6 +543,29 @@ export default function ClientCvPage() {
                   </div>
                 )}
               </div>
+              <section className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-6" aria-labelledby="ai-comments-heading">
+                <h2 id="ai-comments-heading" className="font-bold text-slate-900">General AI comments</h2>
+                <p className="mt-2 text-sm text-slate-600">Private suggestion for this candidate. Review and edit it before adding it to the client CV.</p>
+                <label htmlFor="candidate-ai-comments" className="mt-4 block text-sm font-semibold">Suggested comment</label>
+                <textarea id="candidate-ai-comments" rows={5} value={cv.ai_comments || ""} disabled={working}
+                  onChange={e=>setCv({ ...cv, ai_comments: e.target.value })}
+                  placeholder="AI comments will appear here when this CV is reformatted."
+                  className="mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm" />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={()=>void addAiComments()} disabled={working || !cv.ai_comments?.trim()}
+                    className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Add to CV</button>
+                  <button onClick={()=>void save()} disabled={working}
+                    className="rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Save private comments</button>
+                </div>
+                {cv.recruiter_summary && <div className="mt-5 border-t border-amber-200 pt-4">
+                  <label htmlFor="approved-recruiter-comments" className="block text-sm font-semibold">Recruiter Comments included in the CV</label>
+                  <textarea id="approved-recruiter-comments" rows={4} value={cv.recruiter_summary} disabled={working}
+                    onChange={e=>setCv({ ...cv, recruiter_summary: e.target.value })}
+                    className="mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm" />
+                  <button onClick={()=>void save({ ...cv, recruiter_summary: "" }, "Recruiter comments removed from the client CV.")} disabled={working}
+                    className="mt-2 rounded-lg border border-slate-400 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Remove comments from CV</button>
+                </div>}
+              </section>
               <div className="mt-6">
                 <div className="mb-2 flex items-center justify-between">
                   <h2 className="font-bold text-slate-800">Client preview</h2>
@@ -577,7 +609,7 @@ export default function ClientCvPage() {
                       </div>
                     </div>
                     <PreviewSection
-                      title="Recruiter Summary"
+                      title="Recruiter Comments"
                       value={cv.recruiter_summary}
                       summary
                     />
