@@ -43,7 +43,6 @@ export default function JobPage() {
   const [cvFilter, setCvFilter] = useState<"all" | "reformatted" | "not_reformatted">("all");
   const [loading, setLoading] = useState(true);
   const [scoring, setScoring] = useState<string | null>(null);
-  const [moving, setMoving] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [jobAction, setJobAction] = useState<"status" | "delete" | null>(null);
   const [message, setMessage] = useState("");
@@ -78,9 +77,9 @@ export default function JobPage() {
     setLoading(false);
   }
 
-  async function reformatSelected() {
-    if (!job || bulkWorking || scoring || moving || deleting || jobAction) return;
-    const batch = apps.filter(a => selectedIds.includes(a.id) && a.match_score != null && a.status !== "client_cv_ready");
+  async function reformatSelected(application?: Application) {
+    if (!job || bulkWorking || scoring || deleting || jobAction) return;
+    const batch = application ? [application] : apps.filter(a => selectedIds.includes(a.id) && a.match_score != null && a.status !== "client_cv_ready");
     if (!batch.length) return;
     setBulkWorking(true);
     setMessage("");
@@ -250,25 +249,6 @@ export default function JobPage() {
       await load();
     }
     setDeleting(null);
-  }
-
-  async function moveForward(application: Application) {
-    if (moving || bulkWorking) return;
-    setMoving(application.id);
-    setMessage("");
-    const { error } = await supabase
-      .from("candidate_applications")
-      .update({ status: "client_cv" })
-      .eq("id", application.id);
-    if (error)
-      setMessage("The candidate could not be moved to the Client CV Builder.");
-    else {
-      setMessage(
-        `${application.candidate_name} has been moved to the Client CV Builder.`,
-      );
-      await load();
-    }
-    setMoving(null);
   }
 
   async function setJobStatus(status: "open" | "closed") {
@@ -480,9 +460,9 @@ export default function JobPage() {
               Select all scored candidates shown
             </label>
             <span className="text-sm">{selectedCount} selected</span>
-            <button disabled={!selectedCount || bulkWorking || Boolean(scoring || moving || deleting || jobAction)} onClick={() => void reformatSelected()} className="rounded bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{bulkWorking ? "Reformatting..." : "Reformat selected CVs"}</button>
+            <button disabled={!selectedCount || bulkWorking || Boolean(scoring || deleting || jobAction)} onClick={() => void reformatSelected()} className="rounded bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{bulkWorking ? "Reformatting..." : "Move selected & AI generate CVs"}</button>
             <button disabled={bulkWorking || !selectedIds.length} onClick={() => setSelectedIds([])} className="text-sm font-semibold disabled:opacity-50">Clear selection</button>
-            <p className="w-full text-xs text-slate-600">Select scored candidates whose CVs have not yet been reformatted. Existing CV drafts are kept. Keep this page open while the batch runs.</p>
+            <p className="w-full text-xs text-slate-600">Tick scored candidates, then move them to Client CV Builder and automatically AI generate their CVs in one step. Existing CV drafts are kept. Keep this page open while the batch runs.</p>
             {bulkProgress && <p role="status" className="w-full text-sm font-semibold">{bulkProgress}</p>}
           </div>
           <div id="job-cv-list" className="mt-5 space-y-4">
@@ -536,8 +516,7 @@ export default function JobPage() {
                               ? "AI score"
                               : "Re-score"}
                         </button>
-                        {a.status === "client_cv" ||
-                        a.status === "client_cv_ready" ? (
+                        {a.status === "client_cv_ready" ? (
                           <Link
                             href="/client-cvs"
                             className="rounded bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800"
@@ -546,13 +525,13 @@ export default function JobPage() {
                           </Link>
                         ) : (
                           <button
-                            disabled={bulkWorking || Boolean(moving)}
-                            onClick={() => void moveForward(a)}
+                            disabled={bulkWorking || Boolean(scoring || deleting || jobAction)}
+                            onClick={() => void reformatSelected(a)}
                             className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                           >
-                            {moving === a.id
-                              ? "Moving..."
-                              : "Move to Client CV"}
+                            {bulkWorking
+                              ? "AI generating..."
+                              : "Move & AI generate CV"}
                           </button>
                         )}
                         <button
