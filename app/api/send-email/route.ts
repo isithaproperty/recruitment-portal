@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sendInterviewConfirmation } from "@/lib/interview-confirmation";
 
 type EmailKind = "client_submission" | "application_received" | "client_decision" | "interview_feedback" | "job_creator_interview" | "interview_scheduled";
 type EmailRequest = {
@@ -123,28 +124,6 @@ function brandedClientEmail(name: string, job: string, url: string) {
   </div>`;
 }
 
-function brandedInterviewScheduledEmail(name: string, candidate: string, job: string, when: string, location: string, meetingLink: string, notes: string, reviewUrl: string) {
-  const locationBlock = location ? `<p style="margin:8px 0 0;font-size:15px;line-height:1.6;color:#475467;"><strong style="color:#0b2239;">Location / platform:</strong> ${location}</p>` : "";
-  const meetingBlock = meetingLink ? `<p style="margin:8px 0 0;font-size:15px;line-height:1.6;color:#475467;"><strong style="color:#0b2239;">Meeting link:</strong> <a href="${meetingLink}" style="color:#0b2239;font-weight:700;">Join interview</a></p>` : "";
-  const notesBlock = notes ? `<div style="margin:22px 0;padding:16px 18px;background:#fff9ec;border:1px solid #ead9ad;border-radius:10px;color:#475467;font-size:14px;line-height:1.6;"><strong style="color:#0b2239;">Interview notes</strong><br>${notes}</div>` : "";
-  const reviewBlock = reviewUrl ? `<div style="margin:28px 0;"><a href="${reviewUrl}" style="display:inline-block;background:#0b2239;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 24px;border-radius:8px;">Open candidate review</a></div>` : "";
-  return `
-  <div style="margin:0;padding:32px 16px;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;color:#172536;">
-    <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #dfe5eb;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px rgba(11,34,57,0.06);">
-      <div style="padding:28px 32px;border-bottom:3px solid #c89a4b;"><div style="font-size:24px;font-weight:800;letter-spacing:.04em;color:#0b2239;">ISITHA GLOBAL</div><div style="margin-top:5px;font-size:13px;color:#667085;">Recruitment</div></div>
-      <div style="padding:36px 32px;">
-        <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#344054;">Dear ${name},</p>
-        <h1 style="margin:0 0 18px;font-size:28px;line-height:1.25;color:#0b2239;">Your interview has been scheduled</h1>
-        <p style="margin:0 0 22px;font-size:16px;line-height:1.7;color:#475467;">The interview for <strong style="color:#0b2239;">${candidate}</strong> for the <strong style="color:#0b2239;">${job}</strong> vacancy has now been arranged.</p>
-        <div style="padding:18px 20px;background:#f8f9fa;border:1px solid #dfe5eb;border-radius:10px;"><p style="margin:0;font-size:15px;line-height:1.6;color:#475467;"><strong style="color:#0b2239;">Date & time:</strong> ${when}</p>${locationBlock}${meetingBlock}</div>
-        ${notesBlock}${reviewBlock}
-        <p style="margin:26px 0 0;font-size:16px;line-height:1.7;color:#475467;">Kind regards,<br><strong style="color:#0b2239;">Isitha Global Recruitment</strong></p>
-      </div>
-      <div style="padding:20px 32px;background:#f8f9fa;border-top:1px solid #dfe5eb;font-size:12px;line-height:1.6;color:#667085;"><strong style="color:#0b2239;">Isitha Global</strong><br>Global Professionals. Real Results.<br>recruitment.isitha.global</div>
-    </div>
-  </div>`;
-}
-
 export async function POST(request: Request) {
   try {
     const key = process.env.RESEND_API_KEY;
@@ -157,6 +136,7 @@ export async function POST(request: Request) {
 
     const staffOnly = body.kind === "client_submission" || body.kind === "interview_scheduled";
     if (staffOnly && !(await authenticated(request))) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
+    if (body.kind === "interview_scheduled") return sendInterviewConfirmation(request, body.submissionCandidateId || "", key);
 
     const job = escapeHtml(body.jobTitle || "Recruitment vacancy");
     const candidate = escapeHtml(body.candidateName || "Candidate");
@@ -185,20 +165,6 @@ export async function POST(request: Request) {
       to = interviewContext.recipient;
       subject = `Interview requested: ${interviewContext.candidateName}`;
       html = `<p>${escapeHtml(interviewContext.companyName)} would like to proceed to interview.</p><p><strong>Candidate:</strong> ${escapeHtml(interviewContext.candidateName)}<br><strong>Role:</strong> ${escapeHtml(interviewContext.jobTitle)}</p><p>Log in to the Isitha Global recruitment portal to arrange the interview.</p>`;
-    } else if (body.kind === "interview_scheduled") {
-      if (!body.to || !body.interviewWhen) return NextResponse.json({ error: "Client email or interview date is missing." }, { status: 400 });
-      to = body.to;
-      subject = `Interview scheduled: ${body.candidateName || "candidate"} – ${body.jobTitle || "vacancy"}`;
-      html = brandedInterviewScheduledEmail(
-        escapeHtml(body.clientName || "there"),
-        candidate,
-        job,
-        escapeHtml(body.interviewWhen),
-        escapeHtml(body.interviewLocation || ""),
-        escapeHtml(body.interviewMeetingLink || ""),
-        escapeHtml(body.interviewNotes || ""),
-        escapeHtml(body.reviewUrl || "")
-      );
     }
 
     const response = await fetch("https://api.resend.com/emails", {

@@ -32,5 +32,5 @@ export async function sendRecruitmentEmail(payload: RecruitmentEmailPayload, sup
   const response = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(payload) });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error((result as { error?: string }).error || "Email could not be sent.");
-  return result as { ok: true; id?: string | null };
+  return result as { ok: true; id?: string | null; sent?: string[]; warnings?: string[] };
 }
