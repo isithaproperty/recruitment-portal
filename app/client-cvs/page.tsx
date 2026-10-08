@@ -368,15 +368,6 @@ export default function ClientCvPage() {
     { id: "reformatted", label: "Reformatted", count: reformattedCount },
     { id: "not_reformatted", label: "Not reformatted", count: roleQueue.length - reformattedCount },
   ] as const;
-  const fields: [keyof ClientCv, string][] = [
-    ["recruiter_summary", "Recruiter summary"],
-    ["professional_profile", "Professional profile"],
-    ["skills", "Key skills"],
-    ["qualifications", "Qualifications"],
-    ["experience", "Experience"],
-    ["projects", "Selected projects"],
-    ["additional_information", "Additional information"],
-  ];
   return (
     <main className="min-h-screen bg-slate-100">
       <header className="border-b bg-white">
@@ -609,30 +600,6 @@ export default function ClientCvPage() {
                       www.isitha.global
                     </div>
                   </div>
-                </div>
-              </div>
-              <div className="mt-6 rounded-xl bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-bold">Edit CV content</h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Changes update the preview above. Save before leaving the
-                  page.
-                </p>
-                <div className="mt-5 space-y-5">
-                  {fields.map(([key, label]) => (
-                    <div key={key}>
-                      <label className="mb-2 block text-sm font-bold">
-                        {label}
-                      </label>
-                      <textarea
-                        rows={key === "experience" ? 12 : 5}
-                        value={String(cv[key] || "")}
-                        onChange={(e) =>
-                          setCv({ ...cv, [key]: e.target.value })
-                        }
-                        className="w-full rounded-lg border border-slate-300 px-4 py-3"
-                      />
-                    </div>
-                  ))}
                 </div>
               </div>
             </>
