@@ -32,7 +32,8 @@ export default function CvReviewDecisionAlerts(){
     setLoading(true);
     const{data,error}=await supabase
       .from("client_submission_candidates")
-      .select("id,cv_decision,cv_comment,reviewed_at,candidate_applications(candidate_name),client_submissions(recruitment_clients(company_name),jobs(title))")
+      .select("id,cv_decision,cv_comment,reviewed_at,candidate_applications(candidate_name),client_submissions!inner(recruitment_clients(company_name),jobs!inner(title,status))")
+      .neq("client_submissions.jobs.status","closed")
       .in("cv_decision",["hold","do_not_interview"])
       .order("reviewed_at",{ascending:false})
       .limit(12);

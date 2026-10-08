@@ -258,14 +258,14 @@ export default function JobPage() {
     const { error } = await supabase
       .from("jobs")
       .update({ status })
-      .eq("id", job.id);
+      .eq("id", job.id).select("id").single();
     if (error) {
       setMessage(
         `The job could not be ${status === "closed" ? "closed" : "reopened"}.`,
       );
     } else {
       setJob({ ...job, status });
-      setMessage(`The job is now ${status}.`);
+      setMessage(status === "closed" ? "Job archived. All candidates, scores and CVs are kept with this job and removed from active lists." : "Job reopened. Its candidates and CVs are back in the active lists.");
     }
     setJobAction(null);
   }
@@ -328,9 +328,9 @@ export default function JobPage() {
     <main className="min-h-screen bg-slate-100">
       <div className="mx-auto max-w-6xl px-6 py-8">
         <div className="flex items-center justify-between">
-          <Link href="/">← Dashboard</Link>
+          <Link href={job.status === "closed" ? "/?jobs=archived" : "/"}>{job.status === "closed" ? "← Archived Jobs" : "← Dashboard"}</Link>
           <Link
-            href="/client-cvs"
+            href={job.status === "closed" ? `/client-cvs?archive=1&job=${job.id}` : `/client-cvs?job=${job.id}`}
             className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold"
           >
             Client CV Builder
@@ -342,7 +342,7 @@ export default function JobPage() {
               <span
                 className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${job.status === "open" ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}
               >
-                {job.status}
+                {job.status === "closed" ? "Archived" : job.status}
               </span>
               <h1 className="mt-3 text-3xl font-bold">{job.title}</h1>
               <p className="mt-2 text-slate-600">
@@ -361,8 +361,8 @@ export default function JobPage() {
                 {jobAction === "status"
                   ? "Updating..."
                   : job.status === "open"
-                    ? "Close job"
-                    : "Reopen job"}
+                    ? "Close & archive job"
+                    : "Reopen & restore job"}
               </button>
               <button
                 disabled={bulkWorking || Boolean(jobAction)}
@@ -373,6 +373,7 @@ export default function JobPage() {
               </button>
             </div>
           </div>
+          {job.status === "closed" && <p className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">This job is archived. All candidates, original CVs, scores and formatted CVs remain attached. Reopen the job to return them to the active dashboard.</p>}
           {job.status === "open" && applyPath && (
             <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
               <p className="text-sm font-semibold text-slate-900">
@@ -518,7 +519,7 @@ export default function JobPage() {
                         </button>
                         {a.status === "client_cv_ready" ? (
                           <Link
-                            href="/client-cvs"
+                            href={job.status === "closed" ? `/client-cvs?archive=1&job=${job.id}` : `/client-cvs?job=${job.id}`}
                             className="rounded bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800"
                           >
                             In Client CV Builder
