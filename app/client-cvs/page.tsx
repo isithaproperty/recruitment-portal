@@ -11,7 +11,7 @@ type QueueItem = {
   cv_path: string;
   status: string;
   job_id: string;
-  jobs: { title: string } | null;
+  jobs: { title: string; status: string } | null;
 };
 type ClientCv = {
   id?: string;
@@ -98,6 +98,7 @@ function PreviewSection({
 export default function ClientCvPage() {
   const supabase = useMemo(() => createClient(), []);
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
   const [roleFilter, setRoleFilter] = useState("all");
   const [cvFilter, setCvFilter] = useState<"all" | "reformatted" | "not_reformatted">("all");
   const [selected, setSelected] = useState<QueueItem | null>(null);
@@ -105,12 +106,17 @@ export default function ClientCvPage() {
   const [working, setWorking] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
-    void load();
+    void load(true);
   }, []);
-  async function load() {
+  async function load(initialize = false) {
+    if (initialize) {
+      const query = new URLSearchParams(window.location.search);
+      setShowArchived(query.get("archive") === "1");
+      setRoleFilter(query.get("job") || "all");
+    }
     const { data, error } = await supabase
       .from("candidate_applications")
-      .select("id,candidate_name,cv_path,status,job_id,jobs(title)")
+      .select("id,candidate_name,cv_path,status,job_id,jobs(title,status)")
       .in("status", ["client_cv", "client_cv_ready"])
       .order("created_at", { ascending: true });
     if (error) {
@@ -354,10 +360,11 @@ export default function ClientCvPage() {
       setTimeout(print, 1800);
     } else setTimeout(print, 250);
   }
-  const roles = Array.from(new Map(queue.map((a) => [a.job_id, a.jobs?.title || "Unknown role"])).entries())
+  const folderQueue = queue.filter(a => showArchived ? a.jobs?.status === "closed" : a.jobs?.status !== "closed");
+  const roles = Array.from(new Map(folderQueue.map((a) => [a.job_id, a.jobs?.title || "Unknown role"])).entries())
     .map(([id, title]) => ({ id, title }))
     .sort((a, b) => a.title.localeCompare(b.title));
-  const roleQueue = queue.filter((a) => roleFilter === "all" || a.job_id === roleFilter);
+  const roleQueue = folderQueue.filter((a) => roleFilter === "all" || a.job_id === roleFilter);
   const reformattedCount = roleQueue.filter((a) => a.status === "client_cv_ready").length;
   const visibleQueue = roleQueue.filter((a) => cvFilter === "all" ||
     (cvFilter === "reformatted" ? a.status === "client_cv_ready" : a.status !== "client_cv_ready"));
@@ -391,13 +398,13 @@ export default function ClientCvPage() {
       </header>
       <div className="mx-auto grid max-w-7xl gap-6 px-6 py-8 lg:grid-cols-[320px_1fr]">
         <aside className="h-fit rounded-xl bg-white p-5 shadow-sm">
-          <h2 className="font-bold">CVs by job role</h2>
+          <div className="mb-4 flex gap-2" role="group" aria-label="CV folders">{[false,true].map(archived=><button key={String(archived)} aria-pressed={showArchived===archived} disabled={working} onClick={()=>{setShowArchived(archived);setRoleFilter("all");setSelected(null);setCv(null);setMessage("");}} className={`rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50 ${showArchived===archived?"bg-slate-900 text-white":"bg-white text-slate-900"}`}>{archived?"Archived Jobs":"Active Jobs"}</button>)}</div><h2 className="font-bold">{showArchived?"Archived client CVs":"CVs by job role"}</h2>
           <label htmlFor="cv-role-filter" className="mt-4 block text-sm font-semibold">Job role</label>
           <select id="cv-role-filter" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}
             className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-            <option value="all">All roles ({queue.length})</option>
+            <option value="all">All roles ({folderQueue.length})</option>
             {roles.map((role) => <option key={role.id} value={role.id}>
-              {role.title} ({queue.filter((a) => a.job_id === role.id).length})
+              {role.title} ({folderQueue.filter((a) => a.job_id === role.id).length})
             </option>)}
           </select>
           <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filter CVs by reformatting status">
@@ -411,7 +418,7 @@ export default function ClientCvPage() {
           <div id="client-cv-queue" className="mt-4 space-y-3">
             {visibleQueue.length === 0 ? (
               <p className="rounded border-2 border-dashed p-5 text-sm text-slate-500">
-                {queue.length === 0 ? "No candidates have been moved forward yet." : "No CVs match this role and status."}
+                {folderQueue.length === 0 ? (showArchived ? "No prepared CVs in archived jobs yet. Original CVs are available inside each archived job." : "No active candidates have been moved forward yet.") : "No CVs match this role and status."}
               </p>
             ) : groups.map((group) => (
               <details key={`${group.id}-${roleFilter}-${cvFilter}`} open={roleFilter !== "all" || selected?.job_id === group.id}
