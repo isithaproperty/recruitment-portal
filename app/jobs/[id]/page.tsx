@@ -35,6 +35,9 @@ export default function JobPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkWorking, setBulkWorking] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState("");
   const [job, setJob] = useState<Job | null>(null);
   const [apps, setApps] = useState<Application[]>([]);
   const [cvFilter, setCvFilter] = useState<"all" | "reformatted" | "not_reformatted">("all");
@@ -75,8 +78,61 @@ export default function JobPage() {
     setLoading(false);
   }
 
+  async function reformatSelected() {
+    if (!job || bulkWorking || scoring || moving || deleting || jobAction) return;
+    const batch = apps.filter(a => selectedIds.includes(a.id) && a.match_score != null && a.status !== "client_cv_ready");
+    if (!batch.length) return;
+    setBulkWorking(true);
+    setMessage("");
+    let completed = 0;
+    const failures: string[] = [];
+    try {
+      for (const [index, application] of batch.entries()) {
+        setBulkProgress(`Reformatting ${index + 1} of ${batch.length}: ${application.candidate_name}`);
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session?.access_token) throw new Error("Please sign in again.");
+          // Keep existing reviewed or manually edited drafts intact.
+          const { data: existing, error: existingError } = await supabase.from("client_cvs").select("id").eq("application_id", application.id).maybeSingle();
+          if (existingError) throw new Error("Could not check existing CV.");
+          if (!existing) {
+            const { data: signed, error } = await supabase.storage.from("candidate-cvs").createSignedUrl(application.cv_path, 300);
+            if (error || !signed?.signedUrl) throw new Error("Original CV could not be opened.");
+            const response = await fetch("/api/reformat-cv", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+              body: JSON.stringify({ cvUrl: signed.signedUrl, fileName: application.cv_path.split("/").pop() || "candidate-cv", candidateName: application.candidate_name, jobTitle: job.title }),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || "CV reformatting failed.");
+            const fields = ["professional_profile", "skills", "qualifications", "experience", "projects", "additional_information"] as const;
+            if (fields.some(field => typeof result[field] !== "string")) throw new Error("The reformatted CV was incomplete.");
+            const content = Object.fromEntries(fields.map(field => [field, result[field]]));
+            const { error: saveError } = await supabase.from("client_cvs").insert({
+              ...content, application_id: application.id, candidate_name: application.candidate_name,
+              recruiter_summary: "", source_cv_path: application.cv_path, status: "draft",
+              generated_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+            }).select("id").single();
+            if (saveError) throw new Error("The reformatted CV could not be saved.");
+          }
+          const { error: statusError } = await supabase.from("candidate_applications").update({ status: "client_cv_ready" }).eq("id", application.id).select("id").single();
+          if (statusError) throw new Error("CV saved, but its processing status could not be updated. Retry to finish.");
+          completed += 1;
+          setSelectedIds(ids => ids.filter(id => id !== application.id));
+        } catch (error) {
+          failures.push(`${application.candidate_name}: ${error instanceof Error ? error.message : "Reformatting failed."}`);
+        }
+      }
+      await load();
+      setMessage(`${completed} of ${batch.length} CVs ready in Client CV Builder. Review before sending.${failures.length ? ` Failed (still selected): ${failures.join("; ")}` : ""}`);
+    } finally {
+      setBulkWorking(false);
+      setBulkProgress("");
+    }
+  }
+
   async function scoreCandidate(application: Application) {
-    if (!job || scoring) return;
+    if (!job || scoring || bulkWorking) return;
     setScoring(application.id);
     setMessage("");
     try {
@@ -166,7 +222,7 @@ export default function JobPage() {
     const confirmed = window.confirm(
       `Delete ${application.candidate_name}? This permanently removes the original CV, any reformatted CV and the candidate from the portal.`,
     );
-    if (!confirmed || deleting) return;
+    if (!confirmed || deleting || bulkWorking) return;
     setDeleting(application.id);
     setMessage("");
     const { error: storageError } = await supabase.storage
@@ -197,7 +253,7 @@ export default function JobPage() {
   }
 
   async function moveForward(application: Application) {
-    if (moving) return;
+    if (moving || bulkWorking) return;
     setMoving(application.id);
     setMessage("");
     const { error } = await supabase
@@ -216,7 +272,7 @@ export default function JobPage() {
   }
 
   async function setJobStatus(status: "open" | "closed") {
-    if (!job || jobAction) return;
+    if (!job || jobAction || bulkWorking) return;
     setJobAction("status");
     setMessage("");
     const { error } = await supabase
@@ -235,7 +291,7 @@ export default function JobPage() {
   }
 
   async function deleteJob() {
-    if (!job || jobAction) return;
+    if (!job || jobAction || bulkWorking) return;
     const confirmed = window.confirm(
       `Permanently delete ${job.title}? This also removes ${apps.length} candidate${apps.length === 1 ? "" : "s"}, their original CVs and all reformatted CVs. This cannot be undone.`,
     );
@@ -284,6 +340,9 @@ export default function JobPage() {
     { id: "reformatted", label: "Reformatted", count: reformattedCount },
     { id: "not_reformatted", label: "Not reformatted", count: apps.length - reformattedCount },
   ] as const;
+  const eligibleApps = visibleApps.filter(a => a.match_score != null && a.status !== "client_cv_ready");
+  const selectedCount = apps.filter(a => selectedIds.includes(a.id) && a.match_score != null && a.status !== "client_cv_ready").length;
+  const allSelected = eligibleApps.length > 0 && eligibleApps.every(a => selectedIds.includes(a.id));
   const unscored = apps.filter((a) => a.match_score == null).length;
   return (
     <main className="min-h-screen bg-slate-100">
@@ -313,7 +372,7 @@ export default function JobPage() {
             <div className="flex flex-wrap gap-2">
               <Link href={`/jobs/${job.id}/edit`} className="rounded border border-slate-400 bg-white px-4 py-2 text-sm font-bold text-slate-800">Edit job description</Link>
               <button
-                disabled={Boolean(jobAction)}
+                disabled={bulkWorking || Boolean(jobAction)}
                 onClick={() =>
                   void setJobStatus(job.status === "open" ? "closed" : "open")
                 }
@@ -326,7 +385,7 @@ export default function JobPage() {
                     : "Reopen job"}
               </button>
               <button
-                disabled={Boolean(jobAction)}
+                disabled={bulkWorking || Boolean(jobAction)}
                 onClick={() => void deleteJob()}
                 className="rounded bg-red-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
               >
@@ -389,7 +448,7 @@ export default function JobPage() {
               </span>
               {unscored > 0 && (
                 <button
-                  disabled={Boolean(scoring)}
+                  disabled={bulkWorking || Boolean(scoring)}
                   onClick={() => void scoreAll()}
                   className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 >
@@ -415,6 +474,17 @@ export default function JobPage() {
           <p className="mt-3 text-sm text-slate-500" aria-live="polite">
             Showing {visibleApps.length} of {apps.length} CVs. Reformatted CVs still need review before sending to clients.
           </p>
+          <div className="mt-5 flex flex-wrap items-center gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <label className="flex items-center gap-2 text-sm font-semibold">
+              <input type="checkbox" checked={allSelected} disabled={bulkWorking || !eligibleApps.length} onChange={e => setSelectedIds(ids => e.target.checked ? [...new Set([...ids, ...eligibleApps.map(a => a.id)])] : ids.filter(id => !eligibleApps.some(a => a.id === id)))} />
+              Select all scored candidates shown
+            </label>
+            <span className="text-sm">{selectedCount} selected</span>
+            <button disabled={!selectedCount || bulkWorking || Boolean(scoring || moving || deleting || jobAction)} onClick={() => void reformatSelected()} className="rounded bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{bulkWorking ? "Reformatting..." : "Reformat selected CVs"}</button>
+            <button disabled={bulkWorking || !selectedIds.length} onClick={() => setSelectedIds([])} className="text-sm font-semibold disabled:opacity-50">Clear selection</button>
+            <p className="w-full text-xs text-slate-600">Select scored candidates whose CVs have not yet been reformatted. Existing CV drafts are kept. Keep this page open while the batch runs.</p>
+            {bulkProgress && <p role="status" className="w-full text-sm font-semibold">{bulkProgress}</p>}
+          </div>
           <div id="job-cv-list" className="mt-5 space-y-4">
             {visibleApps.length === 0 ? (
               <p className="rounded-lg border-2 border-dashed border-slate-200 p-8 text-center text-slate-500">
@@ -428,7 +498,7 @@ export default function JobPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <h3 className="font-bold">{a.candidate_name}</h3>
+                      <div className="flex items-center gap-3"><input type="checkbox" aria-label={`Select ${a.candidate_name} for CV reformatting`} checked={selectedIds.includes(a.id)} disabled={bulkWorking || a.match_score == null || a.status === "client_cv_ready"} onChange={e => setSelectedIds(ids => e.target.checked ? [...ids, a.id] : ids.filter(id => id !== a.id))} /><h3 className="font-bold">{a.candidate_name}</h3></div>
                       <span className={`mt-1 inline-block rounded-full px-2.5 py-1 text-sm font-semibold ${a.status === "client_cv_ready" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>
                         {a.status === "client_cv_ready" ? "Reformatted" : "Not reformatted"}
                       </span>
@@ -456,7 +526,7 @@ export default function JobPage() {
                           Download original
                         </button>
                         <button
-                          disabled={Boolean(scoring)}
+                          disabled={bulkWorking || Boolean(scoring)}
                           onClick={() => void scoreCandidate(a)}
                           className="rounded border border-slate-300 px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
                         >
@@ -476,7 +546,7 @@ export default function JobPage() {
                           </Link>
                         ) : (
                           <button
-                            disabled={Boolean(moving)}
+                            disabled={bulkWorking || Boolean(moving)}
                             onClick={() => void moveForward(a)}
                             className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                           >
@@ -486,7 +556,7 @@ export default function JobPage() {
                           </button>
                         )}
                         <button
-                          disabled={Boolean(deleting)}
+                          disabled={bulkWorking || Boolean(deleting)}
                           onClick={() => void deleteCandidate(a)}
                           className="rounded border border-red-600 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-800 disabled:opacity-50"
                         >
