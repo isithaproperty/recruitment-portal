@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import CandidateCvUpload from "@/components/candidate-cv-upload";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -408,6 +409,7 @@ export default function JobPage() {
             </div>
           )}
         </div>
+        {job.status === "open" && <section className="mt-6" aria-label="Upload candidate CV"><h2 className="mb-2 text-2xl font-bold">Add candidate CV</h2><p className="mb-4 text-sm text-slate-600">Drop a CV, check the extracted details, then add the candidate to this job.</p><CandidateCvUpload jobId={job.id} onAdded={load}/></section>}
         {message && (
           <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             {message}
