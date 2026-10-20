@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  scoreImportedApplication,
+  ScoringJob,
+} from "@/lib/score-imported-application";
+import {
   Details,
+  ImportedApplication,
   ExistingApplication,
   MAX_BATCH_BYTES,
   MAX_FILES,
@@ -16,7 +21,7 @@ import {
   validateCv,
 } from "@/lib/bulk-cv-import";
 
-type Job = {
+type Job = ScoringJob & {
   id: string;
   title: string;
   client_company: string | null;
@@ -30,6 +35,9 @@ type Row = {
   message: string;
   reviewed: boolean;
   allowDuplicate: boolean;
+  application?: ImportedApplication;
+  scoreStatus?: "queued" | "scoring" | "ready" | "failed";
+  scoreMessage?: string;
 };
 
 export default function BulkCvImport() {
@@ -58,7 +66,7 @@ export default function BulkCvImport() {
         }
         const { data, error } = await client
           .from("jobs")
-          .select("id,title,client_company,status")
+          .select("id,title,client_company,status,job_description")
           .eq("status", "open")
           .order("created_at", { ascending: false });
         if (error)
@@ -152,7 +160,7 @@ export default function BulkCvImport() {
     setChecked(false);
     setMessage(
       errors.join(" ") ||
-        `${valid.length} CV(s) queued. Read the CVs, then review each candidate before importing.`,
+        `${valid.length} CV(s) queued. Start automatic batch to extract details, create valid records and score them for the selected role.`,
     );
   }
   async function readRows(ids: string[]) {
@@ -237,12 +245,78 @@ export default function BulkCvImport() {
       (!warningsFor(row).length || row.allowDuplicate),
   );
 
-  async function importReviewed() {
-    if (lock.current || !checked || !eligible.length) return;
+  async function scoreApplications(
+    batch: Row[],
+    scoringJob = jobs.find((job) => job.id === jobId),
+  ) {
+    let completed = 0;
+    for (const row of batch) {
+      if (!row.application) continue;
+      update(row.id, {
+        scoreStatus: "scoring",
+        scoreMessage: "Scoring against the selected role...",
+      });
+      try {
+        if (!scoringJob)
+          throw new Error("The selected job could not be loaded.");
+        const score = await scoreImportedApplication(
+          client,
+          row.application,
+          scoringJob,
+        );
+        update(row.id, {
+          scoreStatus: "ready",
+          scoreMessage: `Role score saved: ${score}%. Human review required; no hiring decision has been made.`,
+        });
+        completed++;
+      } catch (error) {
+        update(row.id, {
+          scoreStatus: "failed",
+          scoreMessage: `${error instanceof Error ? error.message : "Scoring failed."} The candidate is already imported. Retry scoring only.`,
+        });
+      }
+    }
+    return `${completed} of ${batch.length} role scores ready for human review. Retry failed scoring below.`;
+  }
+  const pendingScores = rows.filter(
+    (row) =>
+      row.status === "saved" && row.application && row.scoreStatus !== "ready",
+  );
+  async function retryScores() {
+    if (lock.current || !pendingScores.length) return;
     lock.current = true;
     setBusy(true);
+    try {
+      const { data: job, error } = await client
+        .from("jobs")
+        .select("id,title,client_company,status,job_description")
+        .eq("id", jobId)
+        .single();
+      if (error || job?.status !== "open")
+        throw new Error(
+          "The selected role could not be loaded or is no longer open. Check the job before retrying scoring.",
+        );
+      setMessage(await scoreApplications(pendingScores, job as Job));
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Scoring could not be resumed.",
+      );
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  async function processImports(
+    batch: Row[],
+    score: boolean,
+    previousExisting = existing,
+    automatic = false,
+  ) {
     setMessage("");
     let saved = 0;
+    const imported: Row[] = [];
     try {
       const {
         data: { session },
@@ -250,7 +324,7 @@ export default function BulkCvImport() {
       if (!session) throw new Error("Please sign in again.");
       const { data: job, error } = await client
         .from("jobs")
-        .select("id,status")
+        .select("id,title,client_company,status,job_description")
         .eq("id", jobId)
         .single();
       if (error || job?.status !== "open")
@@ -260,19 +334,44 @@ export default function BulkCvImport() {
       // Recheck immediately before saving; never silently bypass newly discovered matches.
       const fresh = await loadExisting(client, jobId);
       setExisting(fresh);
-      for (const row of eligible) {
+      const comparisonRows = rows.map(
+        (row) => batch.find((item) => item.id === row.id) || row,
+      );
+      for (const row of batch) {
+        if (!validDetails(row)) {
+          update(row.id, {
+            status: "review",
+            reviewed: false,
+            message:
+              "Name and a valid email are required. Enter only details stated in the CV, then resume the batch.",
+          });
+          continue;
+        }
         const newMatch = fresh.some(
           (app) =>
             app.email.trim().toLowerCase() ===
               row.details.email.trim().toLowerCase() &&
-            !existing.some((prior) => prior.id === app.id),
+            !previousExisting.some((prior) => prior.id === app.id),
         );
-        if (newMatch) {
+        const warnings = duplicateWarnings(
+          row.details.email,
+          comparisonRows
+            .filter((other) => other.id !== row.id)
+            .map((other) => other.details.email),
+          fresh,
+        );
+        if (
+          newMatch ||
+          (automatic &&
+            warnings.length > 0 &&
+            !(row.allowDuplicate && row.reviewed))
+        ) {
           update(row.id, {
             reviewed: false,
             allowDuplicate: false,
-            message:
-              "A new matching application was found. Review the warning before importing.",
+            message: newMatch
+              ? "A new matching application was found. Review the warning before importing."
+              : "Possible duplicate. Check the warning and explicitly approve a separate application, or remove this file from the queue.",
           });
           continue;
         }
@@ -281,10 +380,18 @@ export default function BulkCvImport() {
           message: "Saving original CV and application…",
         });
         try {
-          await saveApplication(client, jobId, row.file, row.details);
+          const application = await saveApplication(
+            client,
+            jobId,
+            row.file,
+            row.details,
+          );
           saved++;
+          imported.push({ ...row, status: "saved", application });
           update(row.id, {
             status: "saved",
+            application,
+            scoreStatus: score ? "queued" : undefined,
             message:
               "Imported. Source: LinkedIn Easy Apply. Consent remains unrecorded.",
           });
@@ -300,12 +407,16 @@ export default function BulkCvImport() {
                 : "Import failed; review and retry.",
           });
           // Stop after a failed write. Successful rows stay completed and are never retried.
-          break;
+          if (!automatic) break;
         }
       }
       setChecked(false);
+      const scoreSummary =
+        score && imported.length
+          ? await scoreApplications(imported, job as Job)
+          : "";
       setMessage(
-        `${saved} application(s) imported. Completed files will not be imported again. Refresh duplicate checks before another import.`,
+        `${saved} application(s) imported. Completed files will not be imported again. ${scoreSummary || "Refresh duplicate checks before another import."}`,
       );
     } catch (error) {
       setChecked(false);
@@ -313,6 +424,80 @@ export default function BulkCvImport() {
         error instanceof Error
           ? error.message
           : "Import could not be completed.",
+      );
+    }
+  }
+
+  async function importReviewed(score = false) {
+    if (lock.current || !checked || !eligible.length) return;
+    lock.current = true;
+    setBusy(true);
+    try {
+      await processImports(eligible, score);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
+  const automaticRows = rows.filter(
+    (row) => row.status === "queued" || row.status === "review",
+  );
+  async function startAutomatic() {
+    if (lock.current || !jobId || !automaticRows.length) return;
+    lock.current = true;
+    setBusy(true);
+    setMessage("Starting automatic batch. Keep this tab open.");
+    try {
+      const { data: job, error } = await client
+        .from("jobs")
+        .select("id,status")
+        .eq("id", jobId)
+        .single();
+      if (error || job?.status !== "open")
+        throw new Error("This job is no longer available for imports.");
+      const known = await loadExisting(client, jobId);
+      setExisting(known);
+      setChecked(true);
+      const prepared: Row[] = [];
+      for (const row of automaticRows) {
+        if (row.status !== "queued") {
+          prepared.push(row);
+          continue;
+        }
+        update(row.id, {
+          status: "reading",
+          message: "Reading contact details...",
+        });
+        try {
+          const details = await extractDetails(client, row.file);
+          const next = {
+            ...row,
+            details,
+            status: "review" as const,
+            reviewed: false,
+          };
+          prepared.push(next);
+          update(row.id, {
+            details,
+            status: "review",
+            message: "Extracted. Checking required details and duplicates...",
+          });
+        } catch (error) {
+          update(row.id, {
+            status: "review",
+            reviewed: false,
+            message: `${error instanceof Error ? error.message : "Reading failed."} Enter stated details manually or retry reading.`,
+          });
+        }
+      }
+      await processImports(prepared, true, known, true);
+    } catch (error) {
+      setChecked(false);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Batch could not start. Retry when ready.",
       );
     } finally {
       lock.current = false;
@@ -327,10 +512,18 @@ export default function BulkCvImport() {
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6">
         Source: <strong>LinkedIn Easy Apply</strong>. Use CVs lawfully
         downloaded and supplied to Isitha or an authorised recruitment source.
-        Only stated contact details are extracted. Check them before creating
-        applications. Importing does not record consent, send emails, score or
+        Only stated contact details are extracted. Valid files can be processed
+        automatically for this role. Duplicates, missing names/emails and errors
+        need your attention. Importing does not record consent, send emails or
         reject applicants. Files and unsaved edits stay in this tab until you
         import; leaving or refreshing loses the queue.
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6">
+        Choose <strong>Start automatic batch</strong> to extract details, check
+        duplicates, create valid candidate records and run the existing role
+        scoring. Review scores before making hiring decisions. Isitha formatting
+        stays a separate manual action for candidates you select. Keep this tab
+        open until processing finishes.
       </div>
       <label className="block font-bold">
         Job for this batch
@@ -389,6 +582,14 @@ export default function BulkCvImport() {
         </button>
       </div>
       <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          className="rounded-lg bg-[#0b2239] px-5 py-3 font-bold text-white disabled:opacity-50"
+          disabled={busy || !ready || !jobId || !automaticRows.length}
+          onClick={() => void startAutomatic()}
+        >
+          Start automatic batch ({automaticRows.length})
+        </button>
         <button
           type="button"
           className="rounded-lg border bg-white px-4 py-2 disabled:opacity-50"
@@ -454,11 +655,17 @@ export default function BulkCvImport() {
               <h2 className="break-all font-bold">{row.file.name}</h2>
               <span className="rounded bg-slate-100 px-2 py-1 text-xs uppercase">
                 {row.status}
+                {row.scoreStatus ? ` / ${row.scoreStatus}` : ""}
               </span>
             </div>
             <p role="status" className="my-3 break-words text-sm">
               {row.message}
             </p>
+            {row.scoreMessage && (
+              <p role="status" className="my-3 text-sm font-semibold">
+                {row.scoreMessage}
+              </p>
+            )}
             <div className="grid gap-4 sm:grid-cols-2">
               {(
                 [
@@ -568,12 +775,35 @@ export default function BulkCvImport() {
         type="button"
         className="rounded-lg bg-[#0b2239] px-6 py-3 font-bold text-white disabled:opacity-50"
         disabled={busy || !checked || !eligible.length}
+        onClick={() => void importReviewed(true)}
+      >
+        Import reviewed &amp; score ({eligible.length})
+      </button>
+      <button
+        type="button"
+        className="ml-3 rounded-lg border border-slate-400 bg-white px-6 py-3 font-bold disabled:opacity-50"
+        disabled={busy || !checked || !eligible.length}
         onClick={() => void importReviewed()}
       >
         {busy
           ? "Processing…"
           : `Import ${eligible.length} reviewed application(s)`}
       </button>
+      {pendingScores.length > 0 && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void retryScores()}
+          className="mt-3 block rounded-lg border border-amber-400 bg-white px-4 py-3 font-bold disabled:opacity-50"
+        >
+          Retry scoring for {pendingScores.length} imported candidate(s)
+        </button>
+      )}
+      {rows.some((row) => row.scoreStatus === "ready") && (
+        <a href={`/jobs/${jobId}`} className="mt-4 block font-bold underline">
+          Review candidates and scores for this job
+        </a>
+      )}
     </div>
   );
 }
