@@ -75,6 +75,8 @@ function services(options = {}) {
     removed: [],
     reads: [],
     checks: 0,
+    scores: new Map(),
+    scoreCalls: [],
   };
   const client = {
     auth: {
@@ -83,25 +85,50 @@ function services(options = {}) {
       }),
     },
     from(table) {
+      let selectedId;
       return {
         select() {
           return this;
         },
-        eq() {
+        eq(key, value) {
+          if (key === "id") selectedId = value;
           return this;
         },
         order() {
           if (table === "jobs")
             return Promise.resolve({
               data: [
-                { id: "job-1", title: "Synthetic analyst", status: "open" },
+                {
+                  id: "job-1",
+                  title: "Synthetic analyst",
+                  status: "open",
+                  job_description: options.missingDescription
+                    ? null
+                    : "Synthetic analyst duties",
+                },
               ],
             });
           return this;
         },
-        single: async () => ({
-          data: { id: "job-1", status: options.closed ? "closed" : "open" },
-        }),
+        single: async () =>
+          table === "jobs"
+            ? {
+                data: {
+                  id: "job-1",
+                  status: options.closed ? "closed" : "open",
+                  title: "Synthetic analyst",
+                  job_description: options.missingDescription
+                    ? null
+                    : "Synthetic analyst duties",
+                },
+              }
+            : {
+                data: {
+                  id: selectedId,
+                  match_score: state.scores.get(selectedId) ?? null,
+                },
+                error: options.scoringLookupError ? { code: "42501" } : null,
+              },
         range: async (start, end) => {
           state.checks++;
           if (options.checkError) return { error: { message: "mock denial" } };
@@ -122,6 +149,9 @@ function services(options = {}) {
     },
     storage: {
       from: () => ({
+        createSignedUrl: async (path) => ({
+          data: { signedUrl: `https://fixture.test/${path}` },
+        }),
         upload: async (path, file, settings) => {
           state.uploads.push({ path, file, settings });
           return {
@@ -138,6 +168,22 @@ function services(options = {}) {
     },
   };
   const fetch = async (url, init) => {
+    if (url === "/api/score-application") {
+      const body = JSON.parse(init.body);
+      state.scoreCalls.push(body);
+      const application = state.inserts.find(
+        (item) => item.id === body.applicationId,
+      );
+      if (options.scoreError || options.scoreErrorEmail === application.email)
+        return Response.json(
+          { error: "Synthetic scoring failure" },
+          { status: 502 },
+        );
+      const score = application.email === "alice@example.test" ? 0 : 76;
+      state.scores.set(body.applicationId, score);
+      if (options.uncertainScore) throw new Error("Lost scoring response");
+      return Response.json({ match_score: score });
+    }
     assert.equal(url, "/api/extract-candidate");
     assert.equal(init.headers.Authorization, "Bearer synthetic-token");
     const file = init.body.get("cv");
@@ -147,6 +193,11 @@ function services(options = {}) {
         { error: "Synthetic extraction failure" },
         { status: 502 },
       );
+    if (file.name.startsWith("missing"))
+      return Response.json({
+        ...detail("missing@example.test"),
+        candidate_name: "",
+      });
     return Response.json(
       detail(
         file.name.startsWith("bob") ? "bob@example.test" : "alice@example.test",
@@ -154,11 +205,13 @@ function services(options = {}) {
     );
   };
   const lib = load("lib/bulk-cv-import.ts", {}, { fetch });
+  const scoring = load("lib/score-imported-application.ts", {}, { fetch });
   const Component = load("components/bulk-cv-import.tsx", {
     "@/lib/supabase/client": { createClient: () => client },
     "@/lib/bulk-cv-import": lib,
+    "@/lib/score-imported-application": scoring,
   }).default;
-  return { state, client, lib, Component };
+  return { state, client, lib, scoring, Component };
 }
 async function open(options) {
   const mock = services(options);
@@ -227,6 +280,163 @@ test("multi-file picker → extraction → explicit review → original CV and a
     ui.getByRole("button", { name: /Import 0 reviewed/ }).disabled,
     true,
   );
+});
+
+test("automatic batch extracts, creates and scores valid files with no individual review", async () => {
+  const { ui, state } = await open();
+  pick(ui, [fixture(), fixture("bob.pdf")]);
+  fireEvent.click(
+    ui.getByRole("button", { name: "Start automatic batch (2)" }),
+  );
+  await waitFor(() =>
+    assert.equal(ui.getAllByText(/Role score saved:/).length, 2),
+  );
+  assert.equal(state.inserts.length, 2);
+  assert.equal(state.uploads.length, 2);
+  assert.equal(state.scoreCalls.length, 2);
+  for (const body of state.scoreCalls) {
+    assert.equal(body.job.title, "Synthetic analyst");
+    assert.equal(body.job.job_description, "Synthetic analyst duties");
+  }
+  for (const row of state.inserts) {
+    assert.equal(row.job_id, "job-1");
+    assert.equal(row.status, "applied");
+    assert.equal(row.popia_consent, false);
+    assert.equal(row.popia_consent_at, null);
+  }
+  assert.equal(
+    ui.getByRole("button", { name: "Start automatic batch (0)" }).disabled,
+    true,
+  );
+});
+
+test("automatic batch holds duplicates, missing required details and extraction failures while valid entries finish", async () => {
+  const { ui, state } = await open({
+    existing: [{ id: "prior", email: "alice@example.test" }],
+  });
+  pick(ui, [
+    fixture(),
+    fixture("copy.pdf"),
+    fixture("bob.pdf"),
+    fixture("missing.pdf"),
+    fixture("fail.pdf"),
+  ]);
+  fireEvent.click(
+    ui.getByRole("button", { name: "Start automatic batch (5)" }),
+  );
+  await waitFor(() => assert.ok(ui.getByText(/Role score saved:/)));
+  assert.equal(state.inserts.length, 1);
+  assert.equal(state.inserts[0].email, "bob@example.test");
+  assert.ok(section(ui, "alice.pdf").getByText(/Possible duplicate\. Check/));
+  assert.ok(section(ui, "copy.pdf").getByText(/Possible duplicate\. Check/));
+  assert.ok(
+    section(ui, "missing.pdf").getByText(/Name and a valid email are required/),
+  );
+  assert.ok(section(ui, "fail.pdf").getByText(/Synthetic extraction failure/));
+});
+
+test("scoring-only retry retains records/uploads and skips all successful scores including zero", async () => {
+  const options = { scoreErrorEmail: "bob@example.test" };
+  const { ui, state } = await open(options);
+  pick(ui, [fixture(), fixture("bob.pdf")]);
+  fireEvent.click(
+    ui.getByRole("button", { name: "Start automatic batch (2)" }),
+  );
+  await waitFor(() => assert.ok(ui.getByText(/Synthetic scoring failure/)));
+  options.scoreErrorEmail = null;
+  fireEvent.click(
+    ui.getByRole("button", {
+      name: "Retry scoring for 1 imported candidate(s)",
+    }),
+  );
+  await waitFor(() =>
+    assert.equal(ui.getAllByText(/Role score saved:/).length, 2),
+  );
+  assert.equal(state.inserts.length, 2);
+  assert.equal(state.uploads.length, 2);
+  assert.equal(state.scoreCalls.length, 3);
+  assert.equal(
+    state.scoreCalls.filter(
+      (body) => body.applicationId === state.inserts[0].id,
+    ).length,
+    1,
+  );
+});
+
+test("lost scoring response is reconciled from its saved score instead of repeating model work", async () => {
+  const { ui, state } = await open({ uncertainScore: true });
+  pick(ui, [fixture()]);
+  fireEvent.click(
+    ui.getByRole("button", { name: "Start automatic batch (1)" }),
+  );
+  await waitFor(() => assert.ok(ui.getByText(/Lost scoring response/)));
+  fireEvent.click(
+    ui.getByRole("button", {
+      name: "Retry scoring for 1 imported candidate(s)",
+    }),
+  );
+  await waitFor(() => assert.ok(ui.getByText(/Role score saved: 0%/)));
+  assert.equal(state.inserts.length, 1);
+  assert.equal(state.scoreCalls.length, 1);
+});
+
+test("missing job description holds scoring without inventing role duties", async () => {
+  const { ui, state } = await open({ missingDescription: true });
+  pick(ui, [fixture()]);
+  fireEvent.click(
+    ui.getByRole("button", { name: "Start automatic batch (1)" }),
+  );
+  await waitFor(() => assert.ok(ui.getByText(/role needs a job description/)));
+  assert.equal(state.inserts.length, 1);
+  assert.equal(state.scoreCalls.length, 0);
+});
+
+test("automatic retry resumes failed inserts without re-reading or re-importing successful candidates", async () => {
+  const options = { failEmail: "alice@example.test" };
+  const { ui, state } = await open(options);
+  pick(ui, [fixture(), fixture("bob.pdf")]);
+  fireEvent.click(
+    ui.getByRole("button", { name: "Start automatic batch (2)" }),
+  );
+  await waitFor(() => assert.ok(ui.getByText(/Role score saved: 76%/)));
+  assert.equal(state.removed.length, 1);
+  assert.equal(state.existing.length, 1);
+  options.failEmail = null;
+  fireEvent.click(
+    ui.getByRole("button", { name: "Start automatic batch (1)" }),
+  );
+  await waitFor(() =>
+    assert.equal(ui.getAllByText(/Role score saved:/).length, 2),
+  );
+  assert.equal(state.reads.length, 2);
+  assert.equal(state.existing.length, 2);
+  assert.equal(
+    state.inserts.filter((row) => row.email === "bob@example.test").length,
+    1,
+  );
+  assert.equal(state.scoreCalls.length, 2);
+});
+
+test("a missing required detail can be corrected and resumed without individual approval or a second extraction", async () => {
+  const { ui, state } = await open();
+  pick(ui, [fixture("missing.pdf")]);
+  fireEvent.click(
+    ui.getByRole("button", { name: "Start automatic batch (1)" }),
+  );
+  await waitFor(() =>
+    assert.ok(ui.getByText(/Name and a valid email are required/)),
+  );
+  fireEvent.change(
+    section(ui, "missing.pdf").getByLabelText("Candidate name"),
+    { target: { value: "Synthetic Stated Name" } },
+  );
+  fireEvent.click(
+    ui.getByRole("button", { name: "Start automatic batch (1)" }),
+  );
+  await waitFor(() => assert.ok(ui.getByText(/Role score saved:/)));
+  assert.equal(state.reads.length, 1);
+  assert.equal(state.inserts.length, 1);
+  assert.equal(state.inserts[0].candidate_name, "Synthetic Stated Name");
 });
 
 test("drop validates individual files, repeat files and batch count without reading invalid CVs", async () => {

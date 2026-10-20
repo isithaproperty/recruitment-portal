@@ -1,4 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+export type ImportedApplication = {
+  id: string;
+  candidate_name: string;
+  cv_path: string;
+};
 
 export const MAX_FILES = 25;
 export const MAX_BATCH_BYTES = 100 * 1024 * 1024;
@@ -108,7 +113,8 @@ export async function saveApplication(
   jobId: string,
   file: File,
   details: Details,
-) {
+): Promise<ImportedApplication> {
+  const id = crypto.randomUUID();
   const path = `${jobId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
   const { error: uploadError } = await client.storage
     .from("candidate-cvs")
@@ -120,6 +126,7 @@ export async function saveApplication(
   let error;
   try {
     ({ error } = await client.from("candidate_applications").insert({
+      id,
       job_id: jobId,
       candidate_name: details.candidate_name.trim(),
       email: normalizeEmail(details.email),
@@ -153,4 +160,5 @@ export async function saveApplication(
         : "Application was not added. Your details are retained; check permissions or constraints and retry.",
     );
   }
+  return { id, candidate_name: details.candidate_name.trim(), cv_path: path };
 }

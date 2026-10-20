@@ -14,7 +14,8 @@ export default function BulkImportPage() {
               Import LinkedIn CVs
             </h1>
             <p className="mt-2 text-sm text-slate-600">
-              Choose one job, queue downloaded CVs and review each candidate.
+              Choose one role and start automatic candidate import and scoring.
+              Only exceptions need attention.
             </p>
           </div>
           <Link
