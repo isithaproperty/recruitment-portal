@@ -350,6 +350,7 @@ export default function JobPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href={`/jobs/${job.id}/edit`} className="rounded border border-slate-400 bg-white px-4 py-2 text-sm font-bold text-slate-800">Edit job description</Link>
+              {job.status === "open" && <Link href={`/candidates/import?job=${job.id}`} className="rounded border border-amber-400 bg-white px-4 py-2 text-sm font-bold">Import LinkedIn CVs</Link>}
               <button
                 disabled={bulkWorking || Boolean(jobAction)}
                 onClick={() =>
@@ -408,7 +409,6 @@ export default function JobPage() {
             </div>
           )}
         </div>
-        {job.status === "open" && <Link href={`/candidates/import?job=${job.id}`} className="mt-6 inline-block rounded-lg border border-amber-400 bg-white px-4 py-3 font-bold">Import LinkedIn CVs for this job</Link>}
         {message && (
           <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             {message}

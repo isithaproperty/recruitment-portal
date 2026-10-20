@@ -18,7 +18,7 @@ A definite database rejection cleans up only the newly uploaded file and retains
 
 ## Relationship to PR #64
 
-This branch starts from main `575d250`, independently of draft PR #64 (`ef1292d`). It adds a separate component and route and preserves the original single-CV upload. PR #64's job-embedded single-CV form remains useful and is neither superseded nor required. Both changes add UI near the same point in `app/jobs/[id]/page.tsx`; if Git reports an adjacent-insertion conflict, retain both the single-CV section and the bulk-import link. Do not replace the bulk queue with the single-file form or remove either route.
+This branch starts from main `575d250`, independently of draft PR #64 (`ef1292d`). It adds a separate component and route and preserves the original single-CV upload. PR #64's job-embedded single-CV form remains useful and is neither superseded nor required. The bulk-import link is in the job's action bar, away from PR #64's single-CV section. A Git merge-tree check against that exact PR head verifies that both changes can be combined without conflicts. Neither pending branch has been merged.
 
 ## Verification
 
